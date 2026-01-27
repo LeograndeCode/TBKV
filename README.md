@@ -49,7 +49,7 @@ To remap the ViTDet weights, run:
 ./scripts/convert/vitdet.py <old_weights> <new_weights> ./configs/convert/vitdet_b.txt
 ```
 
-Some ViViT evaluation scripts assume a fine-tuned temporal sub-model. Fine-tuned weights can be downloaded [here](https://drive.google.com/drive/folders/1AP-NRhO4l_spEJ6ZXvfVO3PLlLOsXCmM?usp=sharing).
+Some ViViT evaluation scripts assume a fine-tuned temporal sub-model. Fine-tuned weights can be downloaded [here](https://drive.proton.me/urls/12TW6GHZXW#hehlgPwql3ln).
 
 Alternatively, you can run the fine-tuning yourself. To do this, run a `spatial` configuration (to cache the forward pass of the spatial sub-model), followed by a `train` configuration. For example:
 ```

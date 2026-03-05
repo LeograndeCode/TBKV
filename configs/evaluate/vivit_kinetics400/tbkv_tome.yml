@@ -1,0 +1,12 @@
+_defaults:
+  - "_tbkv.yml"
+model:
+  spatial_config:
+    block_config:
+      use_tome: true
+      tome_r: 50   # fg tokens to merge per block during matching
+  temporal_config:
+    block_config:
+      use_tome: true
+      tome_r: 10
+weights: "weights/vivit_b_kinetics400_final_24.pth"

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
 from pathlib import Path
+
+# Add eventful-transformer directory to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from datasets.kinetics400 import Kinetics400
 from utils.config import get_cli_config

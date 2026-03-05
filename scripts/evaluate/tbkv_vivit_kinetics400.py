@@ -6,9 +6,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from datasets.kinetics400 import Kinetics400
-from models.vivit import FactorizedViViT
+from models.tbkv_vivit import TBKVFactorizedViViT
 from utils.config import initialize_run
-from utils.evaluate import run_evaluations, evaluate_vivit_metrics
+from utils.evaluate_tbkv import run_evaluations, evaluate_vivit_metrics
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     data = Kinetics400(
         Path("data", "kinetics400"), split="val", decode_size=224, decode_fps=25
     )
-    run_evaluations(config, FactorizedViViT, data, evaluate_vivit_metrics)
+    run_evaluations(config, TBKVFactorizedViViT, data, evaluate_vivit_metrics)
 
 
 if __name__ == "__main__":

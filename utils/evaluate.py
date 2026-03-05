@@ -26,15 +26,24 @@ def evaluate_vivit_metrics(device, model, data, config):
     top_5 = TopKAccuracy(k=5)
     data = DataLoader(data, batch_size=1)
     n_items = config.get("n_items", len(data))
-    for _, (video, label) in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
+    n_evaluated = 0
+    for idx, (video, label) in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
+        #debug
+        if idx >= 100:
+            break
+
         model.reset()
+        # For fair comparison let's take last 16 frames like in matching mode
+        video = video[:, 16:, :, :, :]
+
         with torch.inference_mode():
             output = model(video.to(device))
         label = label.to(device)
         top_1.update(output, label)
         top_5.update(output, label)
+        n_evaluated += 1
     metrics = {"top_1": top_1.compute(), "top_5": top_5.compute()}
-    counts = model.total_counts() / n_items
+    counts = model.total_counts() / n_evaluated  # divide by actual evaluated count
     model.clear_counts()
     return {"metrics": metrics, "counts": counts}
 

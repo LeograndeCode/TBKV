@@ -1,0 +1,10 @@
+_defaults:
+  - "_tbkv.yml"
+model:
+  spatial_config:
+    block_config:
+      raw: true
+  temporal_config:
+    block_config:
+      raw: true
+weights: "weights/vivit_b_kinetics400_tbkv.pth"

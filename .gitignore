@@ -5,3 +5,21 @@ __pycache__
 inputs
 outputs
 weights
+
+# Large data / generated outputs
+data/
+results/
+
+# External library (keep as separate clone)
+ToMe/
+
+# Common binary / archive formats
+*.tar
+*.tar.gz
+*.zip
+*.pth
+*.pyth
+*.jpg
+*.jpeg
+*.png
+*.pdf

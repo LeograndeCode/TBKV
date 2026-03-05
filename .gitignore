@@ -6,9 +6,8 @@ inputs
 outputs
 weights
 
-# Large data / generated outputs
+# Large data
 data/
-results/
 
 # External library (keep as separate clone)
 ToMe/

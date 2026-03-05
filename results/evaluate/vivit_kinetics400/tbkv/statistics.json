@@ -1,0 +1,341 @@
+{
+  "n_videos_evaluated": 100,
+  "flops_per_video": {
+    "caching_pass": {
+      "add_flops": 727630848.0,
+      "bias_flops": 3142918848.0,
+      "linear_flops": 3218347671552.0,
+      "matmul_flops": 137364185088.0
+    },
+    "matching_pass": {
+      "add_flops": 568450805.76,
+      "bias_flops": 2264483735.04,
+      "linear_flops": 2360334096138.24,
+      "matmul_flops": 84777730191.36
+    },
+    "total": {
+      "add_flops": 1296081653.76,
+      "bias_flops": 5407402583.04,
+      "linear_flops": 5578681767690.24,
+      "matmul_flops": 222141915279.36002
+    }
+  },
+  "matching_savings_per_matching_frame": {
+    "description": "summed over all transformer blocks",
+    "saved_kv_linear_flops": 1053306224.6400001,
+    "matching_overhead_flops": 554783471.0400001,
+    "net_savings": 498522753.6
+  },
+  "per_block": {
+    "spatial_model.backbone.blocks.0": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 47.225625,
+        "cache_size": 401.518125,
+        "cache_kv_size_mb": 29.60312832
+      }
+    },
+    "spatial_model.backbone.blocks.1": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 44.58625,
+        "cache_size": 378.695625,
+        "cache_kv_size_mb": 27.92047104000004
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 100.615625,
+        "n_fg": 122.610625,
+        "n_bg_matched": 95.083125,
+        "n_bg_unmatched": 5.5325,
+        "n_unique_cache_used": 63.43875,
+        "cache_size": 713.38,
+        "n_q": 191.581875,
+        "n_kv": 128.143125,
+        "saved_kv_linear_flops": 112164618.24,
+        "matching_overhead_flops": 55197696.48,
+        "cache_kv_read_bytes": 389767.68
+      }
+    },
+    "spatial_model.backbone.blocks.2": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 47.5125,
+        "cache_size": 403.595625,
+        "cache_kv_size_mb": 29.756298239999914
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 113.655625,
+        "n_fg": 102.163125,
+        "n_bg_matched": 107.5175,
+        "n_bg_unmatched": 6.138125,
+        "n_unique_cache_used": 61.109375,
+        "cache_size": 760.2,
+        "n_q": 169.410625,
+        "n_kv": 108.30125,
+        "saved_kv_linear_flops": 126832803.84,
+        "matching_overhead_flops": 66433121.76,
+        "cache_kv_read_bytes": 375456.0
+      }
+    },
+    "spatial_model.backbone.blocks.3": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 46.771875,
+        "cache_size": 396.965625,
+        "cache_kv_size_mb": 29.26748160000005
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 97.1925,
+        "n_fg": 91.52625,
+        "n_bg_matched": 91.86125,
+        "n_bg_unmatched": 5.33125,
+        "n_unique_cache_used": 59.378125,
+        "cache_size": 748.35,
+        "n_q": 156.235625,
+        "n_kv": 96.8575,
+        "saved_kv_linear_flops": 108363939.84,
+        "matching_overhead_flops": 56005536.0,
+        "cache_kv_read_bytes": 364819.2
+      }
+    },
+    "spatial_model.backbone.blocks.4": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 47.624375,
+        "cache_size": 403.50875,
+        "cache_kv_size_mb": 29.749893120000003
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 84.200625,
+        "n_fg": 91.3875,
+        "n_bg_matched": 79.50375,
+        "n_bg_unmatched": 4.696875,
+        "n_unique_cache_used": 52.315625,
+        "cache_size": 761.99,
+        "n_q": 148.4,
+        "n_kv": 96.084375,
+        "saved_kv_linear_flops": 93786439.68,
+        "matching_overhead_flops": 49335865.92,
+        "cache_kv_read_bytes": 321427.2
+      }
+    },
+    "spatial_model.backbone.blocks.5": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 46.266875,
+        "cache_size": 392.906875,
+        "cache_kv_size_mb": 28.968238080000013
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 76.560625,
+        "n_fg": 90.703125,
+        "n_bg_matched": 72.284375,
+        "n_bg_unmatched": 4.27625,
+        "n_unique_cache_used": 47.178125,
+        "cache_size": 740.27,
+        "n_q": 142.1575,
+        "n_kv": 94.979375,
+        "saved_kv_linear_flops": 85270118.4,
+        "matching_overhead_flops": 43649851.68,
+        "cache_kv_read_bytes": 289862.4
+      }
+    },
+    "spatial_model.backbone.blocks.6": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 46.291875,
+        "cache_size": 392.510625,
+        "cache_kv_size_mb": 28.939023360000043
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 69.95875,
+        "n_fg": 92.2025,
+        "n_bg_matched": 65.97875,
+        "n_bg_unmatched": 3.98,
+        "n_unique_cache_used": 41.569375,
+        "cache_size": 740.67,
+        "n_q": 137.751875,
+        "n_kv": 96.1825,
+        "saved_kv_linear_flops": 77831700.48,
+        "matching_overhead_flops": 39821536.32,
+        "cache_kv_read_bytes": 255402.24
+      }
+    },
+    "spatial_model.backbone.blocks.7": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 50.93625,
+        "cache_size": 431.459375,
+        "cache_kv_size_mb": 31.810636799999987
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 69.40125,
+        "n_fg": 89.8825,
+        "n_bg_matched": 65.455,
+        "n_bg_unmatched": 3.94625,
+        "n_unique_cache_used": 42.8375,
+        "cache_size": 814.98,
+        "n_q": 136.66625,
+        "n_kv": 93.82875,
+        "saved_kv_linear_flops": 77213859.84,
+        "matching_overhead_flops": 43547588.64,
+        "cache_kv_read_bytes": 263193.6
+      }
+    },
+    "spatial_model.backbone.blocks.8": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 52.3925,
+        "cache_size": 444.526875,
+        "cache_kv_size_mb": 32.774077440000006
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 72.9175,
+        "n_fg": 86.70875,
+        "n_bg_matched": 68.790625,
+        "n_bg_unmatched": 4.126875,
+        "n_unique_cache_used": 45.04625,
+        "cache_size": 838.28,
+        "n_q": 135.881875,
+        "n_kv": 90.835625,
+        "saved_kv_linear_flops": 81148723.2,
+        "matching_overhead_flops": 47077984.8,
+        "cache_kv_read_bytes": 276764.16
+      }
+    },
+    "spatial_model.backbone.blocks.9": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 56.471875,
+        "cache_size": 479.33625,
+        "cache_kv_size_mb": 35.34050304000002
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 76.1175,
+        "n_fg": 87.449375,
+        "n_bg_matched": 71.8375,
+        "n_bg_unmatched": 4.28,
+        "n_unique_cache_used": 46.528125,
+        "cache_size": 903.55,
+        "n_q": 138.2575,
+        "n_kv": 91.729375,
+        "saved_kv_linear_flops": 84742963.2,
+        "matching_overhead_flops": 52918394.88,
+        "cache_kv_read_bytes": 285868.8
+      }
+    },
+    "spatial_model.backbone.blocks.10": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 52.70125,
+        "cache_size": 447.918125,
+        "cache_kv_size_mb": 33.024107520000044
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 77.86375,
+        "n_fg": 84.26875,
+        "n_bg_matched": 73.5,
+        "n_bg_unmatched": 4.36375,
+        "n_unique_cache_used": 46.6925,
+        "cache_size": 843.22,
+        "n_q": 135.325,
+        "n_kv": 88.6325,
+        "saved_kv_linear_flops": 86704128.0,
+        "matching_overhead_flops": 50452220.16,
+        "cache_kv_read_bytes": 286878.72
+      }
+    },
+    "spatial_model.backbone.blocks.11": {
+      "caching_avg_per_frame": {
+        "original_tokens": 197.0,
+        "merged_tokens": 50.523125,
+        "cache_size": 429.901875,
+        "cache_kv_size_mb": 31.695805440000036
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 80.930625,
+        "n_fg": 77.788125,
+        "n_bg_matched": 76.396875,
+        "n_bg_unmatched": 4.53375,
+        "n_unique_cache_used": 43.073125,
+        "cache_size": 808.37,
+        "n_q": 125.395,
+        "n_kv": 82.321875,
+        "saved_kv_linear_flops": 90121420.8,
+        "matching_overhead_flops": 50222760.48,
+        "cache_kv_read_bytes": 264641.28
+      }
+    },
+    "temporal_model.backbone.blocks.0": {
+      "caching_avg_per_frame": {
+        "original_tokens": 17.0,
+        "merged_tokens": 3.68,
+        "cache_size": 3.68,
+        "cache_kv_size_mb": 0.27131904000000007
+      }
+    },
+    "temporal_model.backbone.blocks.1": {
+      "caching_avg_per_frame": {
+        "original_tokens": 17.0,
+        "merged_tokens": 5.7,
+        "cache_size": 5.7,
+        "cache_kv_size_mb": 0.42024959999999983
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 8.89,
+        "n_fg": 11.01,
+        "n_bg_matched": 7.89,
+        "n_bg_unmatched": 1.0,
+        "n_unique_cache_used": 3.04,
+        "cache_size": 5.7,
+        "n_q": 15.05,
+        "n_kv": 12.01,
+        "saved_kv_linear_flops": 9307422.72,
+        "matching_overhead_flops": 38899.2,
+        "cache_kv_read_bytes": 18677.76
+      }
+    },
+    "temporal_model.backbone.blocks.2": {
+      "caching_avg_per_frame": {
+        "original_tokens": 17.0,
+        "merged_tokens": 5.77,
+        "cache_size": 5.77,
+        "cache_kv_size_mb": 0.4254105599999996
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 11.89,
+        "n_fg": 5.99,
+        "n_bg_matched": 10.89,
+        "n_bg_unmatched": 1.0,
+        "n_unique_cache_used": 3.39,
+        "cache_size": 5.77,
+        "n_q": 10.38,
+        "n_kv": 6.99,
+        "saved_kv_linear_flops": 12846366.72,
+        "matching_overhead_flops": 52692.48,
+        "cache_kv_read_bytes": 20828.16
+      }
+    },
+    "temporal_model.backbone.blocks.3": {
+      "caching_avg_per_frame": {
+        "original_tokens": 17.0,
+        "merged_tokens": 5.51,
+        "cache_size": 5.51,
+        "cache_kv_size_mb": 0.40624127999999954
+      },
+      "matching_avg_per_frame": {
+        "n_bg": 6.91,
+        "n_fg": 5.75,
+        "n_bg_matched": 5.91,
+        "n_bg_unmatched": 1.0,
+        "n_unique_cache_used": 2.74,
+        "cache_size": 5.51,
+        "n_q": 9.49,
+        "n_kv": 6.75,
+        "saved_kv_linear_flops": 6971719.68,
+        "matching_overhead_flops": 29322.24,
+        "cache_kv_read_bytes": 16834.56
+      }
+    }
+  }
+}

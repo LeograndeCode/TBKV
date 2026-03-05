@@ -1,0 +1,80 @@
+{
+  "tbkv_raw": {
+    "n_evaluated": 100,
+    "top_1": 0.57,
+    "top_5": 0.85,
+    "total_flops_per_video": 7490570124917.76,
+    "flops_caching_per_video": 3359582406336.0,
+    "flops_matching_per_video": 4130987718581.7603,
+    "avg_cache_kv_mb": 2779.250688,
+    "avg_cache_kv_read_bytes_per_matching_frame": 6463787.52,
+    "avg_kv_reuse_flops_per_matching_frame": 1320701460.48,
+    "config": "tbkv_raw",
+    "merge_ratio": null
+  },
+  "tbkv_r0.1": {
+    "n_evaluated": 100,
+    "top_1": 0.65,
+    "top_5": 0.84,
+    "total_flops_per_video": 6203320854512.641,
+    "flops_caching_per_video": 3359582406336.0,
+    "flops_matching_per_video": 2843738448176.64,
+    "avg_cache_kv_mb": 1254.09411072,
+    "avg_cache_kv_read_bytes_per_matching_frame": 4060485.12,
+    "avg_kv_reuse_flops_per_matching_frame": 1147395686.4,
+    "config": "tbkv",
+    "merge_ratio": 0.1
+  },
+  "tbkv_r0.2": {
+    "n_evaluated": 100,
+    "top_1": 0.67,
+    "top_5": 0.85,
+    "total_flops_per_video": 6141189150458.88,
+    "flops_caching_per_video": 3359582406336.0,
+    "flops_matching_per_video": 2781606744122.8804,
+    "avg_cache_kv_mb": 1114.70985216,
+    "avg_cache_kv_read_bytes_per_matching_frame": 3953076.48,
+    "avg_kv_reuse_flops_per_matching_frame": 1128525004.8,
+    "config": "tbkv",
+    "merge_ratio": 0.2
+  },
+  "tbkv_r0.3": {
+    "n_evaluated": 100,
+    "top_1": 0.65,
+    "top_5": 0.86,
+    "total_flops_per_video": 6058610912025.601,
+    "flops_caching_per_video": 3359582406336.0,
+    "flops_matching_per_video": 2699028505689.6,
+    "avg_cache_kv_mb": 976.6939852800002,
+    "avg_cache_kv_read_bytes_per_matching_frame": 3809978.88,
+    "avg_kv_reuse_flops_per_matching_frame": 1101831045.12,
+    "config": "tbkv",
+    "merge_ratio": 0.3
+  },
+  "tbkv_r0.4": {
+    "n_evaluated": 100,
+    "top_1": 0.64,
+    "top_5": 0.86,
+    "total_flops_per_video": 5953003189693.439,
+    "flops_caching_per_video": 3359582406336.0,
+    "flops_matching_per_video": 2593420783357.4404,
+    "avg_cache_kv_mb": 837.4114713600004,
+    "avg_cache_kv_read_bytes_per_matching_frame": 3626173.44,
+    "avg_kv_reuse_flops_per_matching_frame": 1069008814.08,
+    "config": "tbkv",
+    "merge_ratio": 0.4
+  },
+  "tbkv_r0.5": {
+    "n_evaluated": 100,
+    "top_1": 0.66,
+    "top_5": 0.87,
+    "total_flops_per_video": 5808529295416.32,
+    "flops_caching_per_video": 3359582406336.0,
+    "flops_matching_per_video": 2448946889080.3203,
+    "avg_cache_kv_mb": 696.6440755199999,
+    "avg_cache_kv_read_bytes_per_matching_frame": 3376565.76,
+    "avg_kv_reuse_flops_per_matching_frame": 1026372648.96,
+    "config": "tbkv",
+    "merge_ratio": 0.5
+  }
+}

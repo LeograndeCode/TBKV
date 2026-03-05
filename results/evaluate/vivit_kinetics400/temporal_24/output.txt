@@ -1,0 +1,59 @@
+Token top k=24
+Tesla V100-PCIE-16GB
+Metrics
+    top_1: 0.71
+    top_5: 0.95
+Counts
+    accumulator_flops: 3.489e+06
+    add_flops:         3.661e+06
+    bias_flops:        2.818e+06
+    gate_flops:        1.164e+07
+    linear_flops:      2.885e+09
+    matmul_flops:      2.011e+08
+
+Evaluation
+Tesla V100-PCIE-16GB
+Metrics
+    top_1: 0.8
+    top_5: 1
+Counts
+    add_flops:    1.455e+09
+    bias_flops:   6.286e+09
+    linear_flops: 6.437e+12
+    matmul_flops: 2.747e+11
+
+Token top k=24
+Tesla V100-PCIE-16GB
+Metrics
+    top_1: 0.8
+    top_5: 1
+Counts
+    accumulator_flops: 6.934e+08
+    add_flops:         7.276e+08
+    bias_flops:        5.6e+08
+    gate_flops:        2.313e+09
+    linear_flops:      5.735e+11
+    matmul_flops:      3.998e+10
+
+Evaluation
+Tesla V100-PCIE-16GB
+Metrics
+    top_1: 0.8
+    top_5: 1
+Counts
+    add_flops:    7.276e+08
+    bias_flops:   3.143e+09
+    linear_flops: 3.218e+12
+    matmul_flops: 1.374e+11
+
+Evaluation
+Tesla V100-PCIE-16GB
+Metrics
+    top_1: 0.73
+    top_5: 0.96
+Counts
+    add_flops:    7.276e+08
+    bias_flops:   3.143e+09
+    linear_flops: 3.218e+12
+    matmul_flops: 1.374e+11
+

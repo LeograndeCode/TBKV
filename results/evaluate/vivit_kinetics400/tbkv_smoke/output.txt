@@ -1,0 +1,33 @@
+Evaluation
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.289e+08
+    bias_flops:   2.101e+09
+    linear_flops: 2.189e+12
+    matmul_flops: 7.247e+10
+
+Evaluation
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.271e+08
+    bias_flops:   2.093e+09
+    linear_flops: 2.181e+12
+    matmul_flops: 7.205e+10
+
+Evaluation
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.298e+08
+    bias_flops:   2.105e+09
+    linear_flops: 2.193e+12
+    matmul_flops: 7.269e+10
+

@@ -10,7 +10,7 @@ from eventful_transformer.policies import (
     TokenNormTopK,
     TokenNormTopFraction,
 )
-from utils.misc import (
+from src.utils.misc import (
     TopKAccuracy,
     get_device_description,
     get_pytorch_device,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from datasets.vid import VIDResize, VID
+from src.datasets.vid import VIDResize, VID
 
 
 def main():

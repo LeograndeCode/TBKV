@@ -28,10 +28,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import torch
 from omegaconf import OmegaConf
 
-from datasets.kinetics400 import Kinetics400
-from models.tbkv_vivit import TBKVFactorizedViViT
-from utils.config import load_config
-from utils.evaluate_tbkv import evaluate_vivit_metrics
+from src.datasets.kinetics400 import Kinetics400
+from src.models.tbkv_vivit import TBKVFactorizedViViT
+from src.utils.config import load_config
+from src.utils.evaluate_tbkv import evaluate_vivit_metrics
 
 CONFIG_DIR  = Path("configs",  "evaluate", "vivit_kinetics400")
 DEFAULT_OUT = Path("results",  "evaluate", "vivit_kinetics400", "sweep_statistics.json")

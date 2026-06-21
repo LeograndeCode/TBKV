@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from datasets.epic_kitchens import EPICKitchens
-from utils.config import get_cli_config
-from utils.spatial import compute_vivit_spatial
+from src.datasets.epic_kitchens import EPICKitchens
+from src.utils.config import get_cli_config
+from src.utils.spatial import compute_vivit_spatial
 
 
 def main():

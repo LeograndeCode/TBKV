@@ -6,7 +6,7 @@ from eventful_transformer.tbkv_backbone import TBKVViTBackbone
 from eventful_transformer.base import ExtendedModule
 from eventful_transformer.blocks import LN_EPS
 from eventful_transformer.counting import CountedLinear
-from utils.image import as_float32, resize_to_fit
+from src.utils.image import as_float32, resize_to_fit
 
 
 # Resources consulted:

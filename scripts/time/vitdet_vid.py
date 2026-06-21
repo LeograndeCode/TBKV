@@ -7,11 +7,11 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from datasets.vid import VIDResize, VID
-from models.vitdet import ViTDet
-from utils.config import initialize_run
-from utils.evaluate import run_evaluations
-from utils.misc import MeanValue
+from src.datasets.vid import VIDResize, VID
+from src.models.vitdet import ViTDet
+from src.utils.config import initialize_run
+from src.utils.evaluate import run_evaluations
+from src.utils.misc import MeanValue
 
 
 def evaluate_vitdet_runtime(device, model, data, config):

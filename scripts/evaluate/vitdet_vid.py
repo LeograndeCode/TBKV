@@ -7,11 +7,11 @@ from torch.utils.data import DataLoader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
-from datasets.vid import VIDResize, VID
-from models.vitdet import ViTDet
-from utils.config import initialize_run
-from utils.evaluate import run_evaluations
-from utils.misc import dict_to_device, squeeze_dict
+from src.datasets.vid import VIDResize, VID
+from src.models.vitdet import ViTDet
+from src.utils.config import initialize_run
+from src.utils.evaluate import run_evaluations
+from src.utils.misc import dict_to_device, squeeze_dict
 
 
 def evaluate_vitdet_metrics(device, model, data, config):

@@ -18,7 +18,7 @@ from eventful_transformer.utils import (
     RelativePositionEmbedding,
     expand_row_index,
 )
-from utils.image import pad_to_size
+from src.utils.image import pad_to_size
 
 LN_EPS = 1e-6
 

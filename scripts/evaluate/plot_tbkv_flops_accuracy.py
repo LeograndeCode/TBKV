@@ -21,10 +21,10 @@ import torch
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 
-from datasets.kinetics400 import Kinetics400
-from models.tbkv_vivit import TBKVFactorizedViViT
-from utils.config import load_config
-from utils.evaluate_tbkv import evaluate_vivit_metrics
+from src.datasets.kinetics400 import Kinetics400
+from src.models.tbkv_vivit import TBKVFactorizedViViT
+from src.utils.config import load_config
+from src.utils.evaluate_tbkv import evaluate_vivit_metrics
 
 OUTPUT_DIR = Path("results", "evaluate", "vivit_kinetics400")
 CONFIG_DIR = Path("configs", "evaluate", "vivit_kinetics400")

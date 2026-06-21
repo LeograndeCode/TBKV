@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from datasets.epic_kitchens import EPICKitchens
-from models.vivit import FactorizedViViT
-from utils.config import initialize_run
-from utils.evaluate import evaluate_vivit_metrics, run_evaluations
+from src.datasets.epic_kitchens import EPICKitchens
+from src.models.vivit import FactorizedViViT
+from src.utils.config import initialize_run
+from src.utils.evaluate import evaluate_vivit_metrics, run_evaluations
 
 
 def main():

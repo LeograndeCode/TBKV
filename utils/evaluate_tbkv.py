@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from eventful_transformer.base import dict_csv_header, dict_csv_line, dict_string
-from utils.misc import (
+from src.utils.misc import (
     TopKAccuracy,
     get_device_description,
     get_pytorch_device,

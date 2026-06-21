@@ -50,12 +50,12 @@ from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from datasets.kinetics400 import Kinetics400
-from models.vivit import FactorizedViViT
-from models.tbkv_vivit import TBKVFactorizedViViT
+from src.datasets.kinetics400 import Kinetics400
+from src.models.vivit import FactorizedViViT
+from src.models.tbkv_vivit import TBKVFactorizedViViT
 from eventful_transformer.counting import CountedLinear
 from eventful_transformer.tbkv_blocks import TBKVBlock
-from utils.config import load_config
+from src.utils.config import load_config
 
 CONFIG_DIR  = Path("configs", "evaluate", "vivit_kinetics400")
 DEFAULT_OUT = Path("results", "evaluate", "vivit_kinetics400", "cumulative_kv_flops.png")

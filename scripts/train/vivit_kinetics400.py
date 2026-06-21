@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from datasets.vivit_spatial import ViViTSpatial
-from utils.config import get_cli_config
-from utils.train import train_vivit_temporal
+from src.datasets.vivit_spatial import ViViTSpatial
+from src.utils.config import get_cli_config
+from src.utils.train import train_vivit_temporal
 
 
 def main():

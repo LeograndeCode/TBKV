@@ -5,10 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from datasets.kinetics400 import Kinetics400
-from models.vivit import FactorizedViViT
-from utils.config import initialize_run
-from utils.evaluate import run_evaluations, evaluate_vivit_metrics
+from src.datasets.kinetics400 import Kinetics400
+from src.models.vivit import FactorizedViViT
+from src.utils.config import initialize_run
+from src.utils.evaluate import run_evaluations, evaluate_vivit_metrics
 
 
 def main():

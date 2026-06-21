@@ -6,9 +6,9 @@ from pathlib import Path
 # Add eventful-transformer directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from datasets.kinetics400 import Kinetics400
-from utils.config import get_cli_config
-from utils.spatial import compute_vivit_spatial
+from src.datasets.kinetics400 import Kinetics400
+from src.utils.config import get_cli_config
+from src.utils.spatial import compute_vivit_spatial
 
 
 def main():

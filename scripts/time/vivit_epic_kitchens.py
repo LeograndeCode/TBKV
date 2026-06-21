@@ -7,11 +7,11 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from datasets.epic_kitchens import EPICKitchens
-from models.vivit import FactorizedViViT
-from utils.config import initialize_run
-from utils.evaluate import run_evaluations
-from utils.misc import MeanValue
+from src.datasets.epic_kitchens import EPICKitchens
+from src.models.vivit import FactorizedViViT
+from src.utils.config import initialize_run
+from src.utils.evaluate import run_evaluations
+from src.utils.misc import MeanValue
 
 
 def evaluate_vivit_runtime(device, model, data, config):

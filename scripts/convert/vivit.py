@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 
 import torch
 
-from utils.misc import parse_patterns, remap_weights
+from src.utils.misc import parse_patterns, remap_weights
 
 
 # Weight source:

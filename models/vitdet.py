@@ -6,7 +6,7 @@ from torchvision.transforms import Normalize
 from eventful_transformer.backbones import ViTBackbone
 from eventful_transformer.base import ExtendedModule, numeric_tuple
 from eventful_transformer.blocks import LN_EPS
-from utils.image import as_float32, pad_to_size
+from src.utils.image import as_float32, pad_to_size
 
 
 # Resources consulted:

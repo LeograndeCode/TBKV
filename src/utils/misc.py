@@ -6,8 +6,6 @@ from random import Random
 import requests
 import torch
 
-from eventful_transformer.modules import SimpleSTGTGate, TokenDeltaGate, TokenGate
-
 
 class MeanValue:
     def __init__(self):
@@ -41,7 +39,7 @@ class TopKAccuracy:
 
     def update(self, pred, true):
         _, top_k = pred.topk(self.k, dim=-1)
-        self.correct += true.eq(top_k).sum().item()
+        self.correct += true.unsqueeze(1).eq(top_k).any(dim=1).sum().item()
         self.total += true.numel()
 
 
@@ -138,6 +136,7 @@ def seeded_shuffle(sequence, seed):
 
 
 def set_policies(model, policy_class, **policy_kwargs):
+    from eventful_transformer.modules import SimpleSTGTGate, TokenDeltaGate, TokenGate
     for gate_class in [SimpleSTGTGate, TokenDeltaGate, TokenGate]:
         for gate in model.modules_of_type(gate_class):
             gate.policy = policy_class(**policy_kwargs)

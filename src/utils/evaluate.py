@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import torch
@@ -5,11 +6,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.core.base import dict_csv_header, dict_csv_line, dict_string
-from eventful_transformer.policies import (
-    TokenNormThreshold,
-    TokenNormTopK,
-    TokenNormTopFraction,
-)
 from src.utils.misc import (
     TopKAccuracy,
     get_device_description,
@@ -24,16 +20,35 @@ def evaluate_vivit_metrics(device, model, data, config):
     model.clear_counts()
     top_1 = TopKAccuracy(k=1)
     top_5 = TopKAccuracy(k=5)
-    data = DataLoader(data, batch_size=1)
-    n_items = config.get("n_items", len(data))
+    batch_size = config.get("batch_size", 1)
+    num_workers = config.get("num_workers", 2)
+    if batch_size > 1:
+        # Videos have variable spatial dimensions; pad to max size in each mini-batch
+        def collate_pad(batch):
+            videos, labels = zip(*batch)
+            # Pad spatial dims to the max in this batch
+            max_h = max(v.shape[2] for v in videos)
+            max_w = max(v.shape[3] for v in videos)
+            max_t = max(v.shape[0] for v in videos)
+            padded = []
+            for v in videos:
+                t, c, h, w = v.shape
+                pad = torch.zeros(max_t, c, max_h, max_w, dtype=v.dtype)
+                pad[:t, :, :h, :w] = v
+                padded.append(pad)
+            return torch.stack(padded), torch.tensor(labels)
+        data_loader = DataLoader(data, batch_size=batch_size, num_workers=num_workers,
+                                 collate_fn=collate_pad)
+    else:
+        data_loader = DataLoader(data, batch_size=1, num_workers=num_workers)
+    n_items = config.get("n_items", len(data_loader))
     n_evaluated = 0
-    for idx, (video, label) in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
-        #debug
-        if idx >= 100:
+    for idx, (video, label) in tqdm(enumerate(data_loader), total=n_items, ncols=0, file=sys.stdout):
+        if idx >= n_items:
             break
 
         model.reset()
-        # For fair comparison let's take last 16 frames like in matching mode
+        # For fair comparison: use the matching-phase frames (skip first 16)
         video = video[:, 16:, :, :, :]
 
         with torch.inference_mode():
@@ -41,9 +56,21 @@ def evaluate_vivit_metrics(device, model, data, config):
         label = label.to(device)
         top_1.update(output, label)
         top_5.update(output, label)
-        n_evaluated += 1
+        n_evaluated += video.shape[0]  # actual items in batch
+
+        if n_evaluated > 0 and n_evaluated % 10 == 0:
+            cur_top1 = top_1.compute() * 100
+            cur_top5 = top_5.compute() * 100
+            counts = model.total_counts() / n_evaluated
+            print(
+                f"[{n_evaluated:>4}/{n_items * batch_size}]  "
+                f"Top-1: {cur_top1:.1f}%  Top-5: {cur_top5:.1f}%  "
+                f"linear_flops: {counts.get('linear_flops', 0):.3e}",
+                flush=True,
+            )
+
     metrics = {"top_1": top_1.compute(), "top_5": top_5.compute()}
-    counts = model.total_counts() / n_evaluated  # divide by actual evaluated count
+    counts = model.total_counts() / max(n_evaluated, 1)
     model.clear_counts()
     return {"metrics": metrics, "counts": counts}
 
@@ -84,12 +111,15 @@ def run_evaluations(config, model_class, data, evaluate_function):
     if config.get("vanilla", False):
         do_evaluation("Vanilla")
     for k in config.get("token_top_k", []):
+        from eventful_transformer.policies import TokenNormTopK
         set_policies(model, TokenNormTopK, k=k)
         do_evaluation(f"Token top k={k}")
     for fraction in config.get("token_top_fraction", []):
+        from eventful_transformer.policies import TokenNormTopFraction
         set_policies(model, TokenNormTopFraction, fraction=fraction)
         do_evaluation(f"Token top {fraction * 100:.1f}%")
     for threshold in config.get("token_thresholds", []):
+        from eventful_transformer.policies import TokenNormThreshold
         set_policies(model, TokenNormThreshold, threshold=threshold)
         do_evaluation(f"Token threshold {threshold}")
 

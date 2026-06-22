@@ -12,6 +12,8 @@ from src.utils.misc import (
     get_pytorch_device,
     tee_print,
 )
+from eventful_transformer.tbkv_blocks import TBKVBlock
+
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +22,6 @@ from src.utils.misc import (
 
 def _collect_block_stats(model):
     """Return {block_name: [frame-stat dicts]} and reset each block's list."""
-    from eventful_transformer.tbkv_blocks import TBKVBlock
     out = {}
     for name, module in model.named_modules():
         if isinstance(module, TBKVBlock):

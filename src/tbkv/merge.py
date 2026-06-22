@@ -753,7 +753,7 @@ def bipartite_soft_matching(
     r = int(min(r*t, (t - protected) // 2))
 
 
-    print(f"ToMe merging {r} tokens out of {t} with {protected} protected tokens.")
+
     
     if r <= 0:
         return do_nothing, do_nothing

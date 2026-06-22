@@ -135,7 +135,7 @@ def compute_merge( x: torch.Tensor, local_merge_ratio: float) -> Tuple[Callable,
     merged_tokens = m(x)
 
     #Debug
-    print(f"Merge info - merge_ratio: {local_merge_ratio}, original tokens: {original_tokens.shape[1]}, merged tokens: {merged_tokens.shape[1]}")
+
         
     # # Global Token Merging!
     # if args["merge_global"]:

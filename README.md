@@ -88,3 +88,77 @@ Format all code using [Black](https://black.readthedocs.io/en/stable/). Use a li
 ```
 black <FILE>
 ```
+
+## TBKV Evaluation
+
+The `scripts/evaluate/tbkv_vivit_kinetics400.py` script evaluates the TBKV-enhanced ViViT model on Kinetics-400. It uses a two-pass strategy: a **caching pass** over the first frames of each video to build a compressed KV cache, followed by a **matching pass** over the remaining frames that reuses those cached KV pairs.
+
+### Quick start
+
+Make sure Kinetics-400 validation data is in `data/kinetics400/` (the dataset class downloads it automatically on first use) and that the converted weights are at `weights/vivit_b_kinetics400.pth`.
+
+Run the evaluation with live progress output:
+```bash
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=1000
+```
+
+To evaluate on a smaller subset (e.g. for a smoke test):
+```bash
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=25
+```
+
+> **Note:** `PYTHONUNBUFFERED=1` and `--no-capture-output` are required to see live terminal output. Without them, `conda run` buffers all stdout until the process exits.
+
+### Comparing against the vanilla baseline
+
+To run the standard (non-TBKV) ViViT for direct comparison:
+```bash
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/vivit_kinetics400.py base n_items=1000 batch_size=4
+```
+
+The vanilla script supports `batch_size > 1` (videos are zero-padded to the largest spatial size in each mini-batch). TBKV must use `batch_size=1` because each video builds its own per-block KV cache.
+
+### Configuration
+
+Both scripts read their model and dataset configuration from `configs/evaluate/vivit_kinetics400/`. The config name (`tbkv`, `base`, `tbkv_raw`, etc.) corresponds to a `.yml` file in that directory. Key configs:
+
+| Config | Description |
+|--------|-------------|
+| `base` | Vanilla ViViT, no caching |
+| `tbkv` | TBKV with merged cache (`local_merge_ratio=0.5`, `r_match=0.95`) |
+| `tbkv_raw` | TBKV with raw cache (no token merging) |
+| `tbkv_tome` | TBKV using ToMe as the merge strategy |
+
+Any config key can be overridden on the command line:
+```bash
+python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=500 model.spatial_config.block_config.local_merge_ratio=0.3
+```
+
+### Output
+
+Results are written to `results/evaluate/vivit_kinetics400/<config_name>/`:
+
+- `output.txt` — full evaluation report printed to terminal (caching pass stats, matching pass stats, per-block breakdown)
+- `metrics.csv` — Top-1 and Top-5 accuracy
+- `counts.csv` — FLOPs breakdown (linear, matmul, add, bias)
+
+The terminal report includes live per-video progress every 10 videos:
+```
+[ 10/1000]  Top-1: 80.0%  Top-5: 100.0%  Matching linear_flops: 2.241e+12
+[ 20/1000]  Top-1: 80.0%  Top-5:  95.0%  Matching linear_flops: 2.284e+12
+```
+
+### Sample results (25 videos)
+
+| | Vanilla ViViT | TBKV ViViT (matching pass) |
+|---|---|---|
+| Top-1 | ~66–72% | ~80–84% *(sampling noise at n=25)* |
+| Top-5 | ~91–97% | ~96–100% |
+| `linear_flops` | 3.218e+12 | ~2.28e+12 (**−29%**) |
+| `matmul_flops` | 1.374e+11 | ~7.97e+10 (**−42%**) |
+| Net KV savings/video | — | ~7.15e+09 |
+
+> Accuracy differences at small sample sizes are due to sampling variance. Run with `n_items=1000` or more for stable accuracy estimates.

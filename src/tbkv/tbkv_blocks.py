@@ -49,8 +49,10 @@ def merging(x, attn_map, k, v, local_merge_ratio):
     merged_tokens = k_merged_flat.shape[1]
     k_merged = k_merged_flat.reshape(B, merged_tokens, num_heads, head_dim).transpose(1, 2)
     v_merged = v_merged_flat.reshape(B, merged_tokens, num_heads, head_dim).transpose(1, 2)
-    
-    return k_merged, v_merged, merged_x_bg
+
+    n_bg_orig = int(x_bg.shape[1])
+    n_fg = int(x_fg.shape[1])
+    return k_merged, v_merged, merged_x_bg, n_bg_orig, n_fg
 
 
 
@@ -168,7 +170,7 @@ class TBKVBlock(Block):
 
             x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(patch_x_norm, patch_attnmap)
 
-            print(f"Matching mode. Background tokens: {x_bg.shape[1]}, Foreground tokens: {x_fg.shape[1]}")
+
 
             # q: [B,H,N_q,hd]  k,v: [B,H,N_kv,hd]  new_tokens: [B,N_q,C]
             if self.use_tome:
@@ -356,13 +358,16 @@ class TBKVBlock(Block):
                     )
                 n_cached = int(self.cache.tokens.shape[1])
                 _kv_mb = (self.cache.K.numel() * self.cache.K.element_size() * 2) / 1e6
-                print(f"Caching (raw). Tokens in cache so far: {n_cached}")
+
                 if not hasattr(self, '_frame_stats'):
                     self._frame_stats = []
+                n_patch = int(k_new.shape[2])
                 self._frame_stats.append({
                     'phase':              'caching',
                     'original_tokens':    int(N),
-                    'merged_tokens':      int(k_new.shape[2]),
+                    'n_bg':               n_patch,
+                    'n_fg':               0,
+                    'merged_tokens':      n_patch,
                     'cache_size':         n_cached,
                     'cache_kv_size_mb':   _kv_mb,
                 })
@@ -375,13 +380,13 @@ class TBKVBlock(Block):
                     v_patch = v[:, :, 1:, :]
                     attn_patch = x[:, :, 1:, 1:]   # [B, H, N_patch, N_patch]
                     x_for_merge = v_patch.transpose(1, 2).reshape(B, N_patch, H * head_dim)
-                    k_new, v_new, tok_new = merging(
+                    k_new, v_new, tok_new, _n_bg, _n_fg = merging(
                         x=x_for_merge, attn_map=attn_patch,
                         k=k_patch, v=v_patch,
                         local_merge_ratio=self.local_merge_ratio
                     )
                 else:
-                    k_new, v_new, tok_new = merging(
+                    k_new, v_new, tok_new, _n_bg, _n_fg = merging(
                         x=v.transpose(1, 2).reshape(B, N, H * head_dim),
                         attn_map=x,
                         k=k, v=v,
@@ -398,13 +403,15 @@ class TBKVBlock(Block):
                     )
                 n_cached = int(self.cache.tokens.shape[1])
                 _kv_mb = (self.cache.K.numel() * self.cache.K.element_size() * 2) / 1e6
-                print(f"Caching. Added {tok_new.shape[1]} merged tokens (cache total: {n_cached})")
+
                 # --- record caching-phase stats ---
                 if not hasattr(self, '_frame_stats'):
                     self._frame_stats = []
                 self._frame_stats.append({
                     'phase':             'caching',
                     'original_tokens':   int(N),
+                    'n_bg':              _n_bg,
+                    'n_fg':              _n_fg,
                     'merged_tokens':     int(tok_new.shape[1]),
                     'cache_size':        n_cached,
                     'cache_kv_size_mb':  _kv_mb,

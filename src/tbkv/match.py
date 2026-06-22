@@ -204,9 +204,7 @@ def perform_tbkv_matching_with_tome(
     # Tokens for forward pass: matched cache + unmatched bg + reduced fg (after ToMe)
     tokens_forward = torch.cat([matched_cache_tokens, unm_bg_tokens, x_fg_reduced], dim=-2)
 
-    # DEBUG: Print token composition
-    print(f"    Token composition: {matched_cache_tokens.shape[1]} cache + {unm_bg_tokens.shape[1]} unmatched_bg + {x_fg_reduced.shape[1]} fg_reduced = {tokens_forward.shape[1]} total")
-    print(f"    Original input had {N} tokens, now using {tokens_forward.shape[1]} tokens ({100.0*tokens_forward.shape[1]/N:.1f}%)")
+
 
     # For residual connection, we need unnormalized version
     # Apply same merging to unnormalized tokens to maintain consistency

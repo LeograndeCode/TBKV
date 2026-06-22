@@ -51,7 +51,7 @@ class Cache():
             torch.cat([u, u[-1:].expand(max_unique - u.shape[0])]) for u in unique_per_batch
         ], dim=0)  # [B, max_unique]
 
-        print(f"  Layer matching: {r}/{N} bg tokens matched to {mc_idx_unique.shape[1]} unique cache tokens (cache size: {cache_tokens.shape[1]})")
+
 
         # K and V are [B, H, N_cache, head_dim]
         k_matched = torch.gather(self.K, dim=2, index=mc_idx_unique.unsqueeze(1).unsqueeze(-1).expand(-1, self.K.shape[1], -1, self.K.shape[-1]))  # [B, H, max_unique, head_dim]

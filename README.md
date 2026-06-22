@@ -1,164 +1,376 @@
-## Overview
+# TBKV: Token-Based KV Caching for Efficient Video Transformers
 
-This is the PyTorch code for our ICCV 2023 paper "Eventful Transformers: Leveraging Temporal Redundancy in Vision Transformers." Please see our [paper webpage](https://wisionlab.com/project/eventful-transformers/) and the [arXiv paper](https://arxiv.org/abs/2308.13494).
+**Repository:** https://github.com/wision-lab/TBKV
 
-## Disclaimer
+## Introduction
 
-This is research-grade code, so it's possible you will encounter some hiccups. [Contact me](https://github.com/mattdutson/) if you encounter problems or if the documentation is unclear, and I will do my best to help.
+TBKV (Token-Based KV Caching) is a method for efficient video transformer inference that leverages temporal redundancy across frames. Rather than recomputing Keys and Values (KV) from scratch at every frame, TBKV builds a compressed KV cache from a set of caching frames and reuses it during subsequent matching frames.
 
-## TLDR
+The core insight is that in video, background regions remain largely static across frames. TBKV exploits this by:
 
-Most of the interesting code (implementation of our core contributions) is in `eventful_transformer/blocks.py`, `eventful_transformer/modules.py`, and `eventful_transformer/policies.py`.
+1. **Separating foreground and background tokens** using the attention map from the previous frame as a saliency signal. Tokens attending to high-attention regions are classified as foreground; the rest as background.
+2. **Merging background tokens** into compact representations (using a ratio $r_{\text{merge}}$) before storing them in the cache. This reduces cache memory and matching cost.
+3. **Matching incoming background tokens** against the cache at inference time using cosine similarity. If a token is sufficiently similar to a cached entry (controlled by $r_{\text{match}}$), its KV computation is skipped and the cached KV is reused instead.
+4. **Forwarding only unmatched tokens** through the full QKV projection, then assembling the full attention input from foreground tokens + unmatched background tokens + retrieved cache entries.
 
-## Dependencies
+This two-pass evaluation strategy — a **caching pass** over the first $P$ frames, followed by a **matching pass** over the remaining frames — achieves significant FLOPs savings with minimal accuracy degradation.
 
-Dependencies are managed using Conda. The environment is defined in `environment.yml`.
+### Key Components
 
-To create the environment, run:
+- **Foreground/background separation**: driven by the previous frame's attention map, without learned gates or auxiliary networks.
+- **Token merging in the cache**: background tokens are merged with a local merge ratio ($r_{\text{merge}}$) so each cache entry represents multiple original tokens, reducing cache footprint.
+- **Cosine similarity matching**: incoming tokens are matched to cache entries; matched tokens skip KV projection entirely.
+- **Merged mode vs. raw mode**: in merged mode the cache is compressed; in raw mode all tokens are stored without merging (higher memory, higher recall).
+
+### Efficiency Profile (ViViT-B, Kinetics-400)
+
+| | Vanilla ViViT | TBKV (matching pass) |
+|---|---|---|
+| `linear_flops` | 3.218e+12 | ~2.28e+12 (**−29%**) |
+| `matmul_flops` | 1.374e+11 | ~7.97e+10 (**−42%**) |
+| Net KV savings/video | — | ~7.15e+09 |
+| Merge factor (bg→cache) | — | ~2× per block |
+
+## Quick Start
+
+### Prerequisites
+
+- Linux system (Windows users should use WSL2)
+- ~50 GB free disk space (for Kinetics-400 and results)
+- NVIDIA GPU with CUDA support recommended (compute capability 7.0+)
+
+### Environment Setup
+
+#### 1. Clone the Repository
+
+```bash
+git clone https://github.com/wision-lab/TBKV.git
+cd TBKV
 ```
+
+#### 2. Install Miniconda
+
+If you don't have Miniconda/Anaconda installed:
+
+```bash
+# Linux (x86_64)
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+source $HOME/miniconda3/bin/activate
+```
+
+#### 3. Create the Conda Environment
+
+```bash
 conda env create -f environment.yml
-```
-Then activate the environment with:
-```
 conda activate eventful-transformer
 ```
 
-## Running Scripts
+The `environment.yml` includes Python 3.10, PyTorch 2.0 with CUDA 11.8, Detectron2 (built from source), OpenCV, FFmpeg, TensorBoard, and all required dependencies.
 
-Scripts should be run from the repo's base directory.
+#### 4. Verify Installation
 
-Many scripts expect a `.yml` configuration file as a command-line argument. These configuration files are in `configs`. The structure of the `configs` folder is set to mirror the structure of the `scripts` folder. For example, to run the `base_672` evaluation for the ViTDet VID model:
+```bash
+python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
 ```
-./scripts/evaluate/vitdet_vid.py ./configs/evaluate/vitdet_vid/base_672.yml
+
+#### 5. Set PYTHONPATH
+
+Scripts must be run from the repo root with the current directory on the Python path:
+
+```bash
+export PYTHONPATH="$PYTHONPATH:."
+```
+
+## Repository Structure
+
+```
+TBKV/
+├── configs/
+│   ├── evaluate/          # Evaluation configurations
+│   │   ├── vivit_kinetics400/
+│   │   ├── vivit_epic_kitchens/
+│   │   └── vitdet_vid/
+│   ├── models/            # Model architecture configs
+│   ├── spatial/           # Spatial pre-caching configs
+│   └── train/             # Fine-tuning configs
+├── scripts/
+│   ├── evaluate/          # Evaluation entry points
+│   │   ├── tbkv_vivit_kinetics400.py   # TBKV evaluation
+│   │   ├── vivit_kinetics400.py        # Vanilla baseline
+│   │   ├── vivit_epic_kitchens.py
+│   │   └── vitdet_vid.py
+│   ├── convert/           # Weight conversion scripts
+│   └── spatial/           # Spatial feature caching
+├── src/
+│   ├── core/              # Base transformer modules
+│   │   ├── base.py        # ExtendedModule, Counts, FLOPs tracking
+│   │   ├── blocks.py      # Standard transformer block
+│   │   ├── backbones.py   # ViT backbone
+│   │   └── counting.py    # CountedLinear, CountedMatmul, etc.
+│   ├── tbkv/              # TBKV-specific modules
+│   │   ├── tbkv_blocks.py     # TBKVBlock — caching and matching logic
+│   │   ├── tbkv_backbone.py   # TBKVViTBackbone
+│   │   ├── cache.py           # Cache class and cosine matching
+│   │   ├── match.py           # perform_tbkv_matching
+│   │   ├── merge.py           # Token merging (ToMe integration)
+│   │   └── tbkv_utils.py      # extract_bg_fg_tokens, compute_merge
+│   ├── models/
+│   │   ├── vivit.py           # FactorizedViViT (vanilla)
+│   │   ├── tbkv_vivit.py      # TBKVFactorizedViViT
+│   │   └── vitdet.py          # ViTDet object detector
+│   ├── datasets/
+│   │   ├── kinetics400.py
+│   │   ├── epic_kitchens.py
+│   │   └── vid.py
+│   └── utils/
+│       ├── evaluate.py        # Vanilla evaluation loop
+│       ├── evaluate_tbkv.py   # TBKV evaluation loop (legacy)
+│       ├── config.py          # OmegaConf config loading
+│       └── misc.py            # TopKAccuracy, tee_print, etc.
+├── utils/
+│   └── test_evaluate.py   # New evaluation framework with detailed stats
+├── weights/               # Pre-trained weights (place here)
+├── data/                  # Datasets (auto-downloaded where possible)
+└── results/               # Evaluation outputs
 ```
 
 ## Weights
 
-Weights for the ViViT action recognition model (on Kinetics-400 and EPIC-Kitchens) are available [here](https://github.com/alibaba-mmai-research/TAdaConv/blob/main/MODEL_ZOO.md). We use the "ViViT Fact. Enc." weights.
+### ViViT-B (Kinetics-400 and EPIC-Kitchens)
 
-Weights for the ViTDet object detection model (on COCO) are available [here](https://github.com/facebookresearch/detectron2/tree/main/projects/ViTDet). We use the "Cascade Mask R-CNN, ViTDet, ViT-B" weights. Weights on ImageNet VID are available [here](https://drive.google.com/drive/folders/1tNtIOYlCIlzb2d_fCsIbmjgIETd-xzW-) (`frcnn_vitdet_final.pth`).
+Download the "ViViT Fact. Enc." weights from the [TAdaConv model zoo](https://github.com/alibaba-mmai-research/TAdaConv/blob/main/MODEL_ZOO.md), then convert:
 
-The weight names need to be remapped to work with this codebase. To remap the ViViT weights, run:
-```
-./scripts/convert/vivit.py <old_weights> <new_weights> ./configs/convert/vivit_b.txt
-```
-with `<old_weights>` and `<new_weigtht>` replaced by the path of the downloaded weights and the path where the converted weights should be saved, respectively.
-
-To remap the ViTDet weights, run:
-```
-./scripts/convert/vitdet.py <old_weights> <new_weights> ./configs/convert/vitdet_b.txt
+```bash
+python scripts/convert/vivit.py <downloaded.pth> weights/vivit_b_kinetics400.pth configs/convert/vivit_b.txt
 ```
 
-Some ViViT evaluation scripts assume a fine-tuned temporal sub-model. Fine-tuned weights can be downloaded [here](https://drive.proton.me/urls/12TW6GHZXW#hehlgPwql3ln).
+Fine-tuned temporal sub-model weights (used by some evaluation configs) are available [here](https://drive.proton.me/urls/12TW6GHZXW#hehlgPwql3ln).
 
-Alternatively, you can run the fine-tuning yourself. To do this, run a `spatial` configuration (to cache the forward pass of the spatial sub-model), followed by a `train` configuration. For example:
+### ViTDet-B (COCO → VID)
+
+Download "Cascade Mask R-CNN, ViTDet, ViT-B" from [Detectron2 ViTDet](https://github.com/facebookresearch/detectron2/tree/main/projects/ViTDet) and the VID fine-tuned weights from [here](https://drive.google.com/drive/folders/1tNtIOYlCIlzb2d_fCsIbmjgIETd-xzW-) (`frcnn_vitdet_final.pth`), then convert:
+
+```bash
+python scripts/convert/vitdet.py <downloaded.pkl> weights/vitdet_b_coco.pth configs/convert/vitdet_b.txt
 ```
-./scripts/spatial/vivit_epic_kitchens.py ./configs/spatial/vivit_epic_kitchens/50.yml
-```
-then
-```
-./scripts/train/vivit_epic_kitchens.py ./configs/train/vivit_epic_kitchens/final_50.yml
-```
-This will produce `weights/vivit_b_epic_kitchens_final_50.pth`.
 
 ## Data
 
-The `datasets` folder defines PyTorch `Dataset` classes for Kinetics-400, VID, and EPIC-Kitchens.
+### Kinetics-400
 
-The Kinetics-400 class will automatically download and prepare the dataset on first use.
+The `Kinetics400` dataset class automatically downloads and prepares the validation set on first use. Data is stored under `data/kinetics400/`.
 
-VID requires a manual download. Download `vid_data.tar` from [here](https://drive.google.com/drive/folders/1tNtIOYlCIlzb2d_fCsIbmjgIETd-xzW-) and place it at `./data/vid/data.tar`. The VID class will take care of unpacking and preparing the data on first use.
+### EPIC-Kitchens
 
-EPIC-Kitchens also requires a manual download. Download the videos from [here](https://drive.google.com/drive/folders/1OKJpgSKR1QnWa2tMMafknLF-CpEaxDbY) and place them in `./data/epic_kitchens/videos`. Download the labels `EPIC_100_train.csv` and `EPIC_100_validation.csv` from [here](https://github.com/epic-kitchens/epic-kitchens-100-annotations) and place them in `./data/epic_kitchens`. The EPICKitchens class will prepare the data on first use.
+Manual download required:
+- Videos → `data/epic_kitchens/videos/` from [here](https://drive.google.com/drive/folders/1OKJpgSKR1QnWa2tMMafknLF-CpEaxDbY)
+- Labels `EPIC_100_train.csv` and `EPIC_100_validation.csv` → `data/epic_kitchens/` from [here](https://github.com/epic-kitchens/epic-kitchens-100-annotations)
 
-## Other Setup
+### ImageNet VID
 
-Scripts assume that the current working directory is on the Python path. In the Bash shell, run
-```
-export PYTHONPATH="$PYTHONPATH:."
-```
-Or in the Fish shell:
-```
-set -ax PYTHONPATH .
-```
+Manual download required. Place `vid_data.tar` from [here](https://drive.google.com/drive/folders/1tNtIOYlCIlzb2d_fCsIbmjgIETd-xzW-) at `data/vid/data.tar`. The dataset class handles extraction on first use.
 
-## Code Style
+## Evaluation
 
-Format all code using [Black](https://black.readthedocs.io/en/stable/). Use a line limit of 88 characters (the default). To format a file, use the command:
-```
-black <FILE>
-```
+### TBKV ViViT on Kinetics-400
 
-## TBKV Evaluation
+The main evaluation script is `scripts/evaluate/tbkv_vivit_kinetics400.py`. It uses `utils/test_evaluate.py` which implements the full two-pass TBKV evaluation with detailed per-block statistics.
 
-The `scripts/evaluate/tbkv_vivit_kinetics400.py` script evaluates the TBKV-enhanced ViViT model on Kinetics-400. It uses a two-pass strategy: a **caching pass** over the first frames of each video to build a compressed KV cache, followed by a **matching pass** over the remaining frames that reuses those cached KV pairs.
+#### Run TBKV evaluation
 
-### Quick start
-
-Make sure Kinetics-400 validation data is in `data/kinetics400/` (the dataset class downloads it automatically on first use) and that the converted weights are at `weights/vivit_b_kinetics400.pth`.
-
-Run the evaluation with live progress output:
 ```bash
 PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
   python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=1000
 ```
 
-To evaluate on a smaller subset (e.g. for a smoke test):
+For a quick smoke test on 25 videos:
+
 ```bash
 PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
   python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=25
 ```
 
-> **Note:** `PYTHONUNBUFFERED=1` and `--no-capture-output` are required to see live terminal output. Without them, `conda run` buffers all stdout until the process exits.
+> **Important:** `PYTHONUNBUFFERED=1` and `--no-capture-output` are required. Without them, `conda run` buffers all stdout until the process exits — you will see no output until the run completes.
 
-### Comparing against the vanilla baseline
+#### Run vanilla baseline (for comparison)
 
-To run the standard (non-TBKV) ViViT for direct comparison:
 ```bash
 PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
   python scripts/evaluate/vivit_kinetics400.py base n_items=1000 batch_size=4
 ```
 
-The vanilla script supports `batch_size > 1` (videos are zero-padded to the largest spatial size in each mini-batch). TBKV must use `batch_size=1` because each video builds its own per-block KV cache.
+The vanilla script supports `batch_size > 1` (videos are zero-padded within each mini-batch to the largest spatial size). TBKV must use `batch_size=1` because each video builds its own per-block KV cache that cannot be shared across batch items.
 
 ### Configuration
 
-Both scripts read their model and dataset configuration from `configs/evaluate/vivit_kinetics400/`. The config name (`tbkv`, `base`, `tbkv_raw`, etc.) corresponds to a `.yml` file in that directory. Key configs:
+Configs are in `configs/evaluate/vivit_kinetics400/`. The config name passed on the command line (`tbkv`, `base`, etc.) selects a `.yml` file in that directory:
 
 | Config | Description |
 |--------|-------------|
 | `base` | Vanilla ViViT, no caching |
-| `tbkv` | TBKV with merged cache (`local_merge_ratio=0.5`, `r_match=0.95`) |
-| `tbkv_raw` | TBKV with raw cache (no token merging) |
-| `tbkv_tome` | TBKV using ToMe as the merge strategy |
+| `tbkv` | TBKV merged cache (`local_merge_ratio=0.5`, `r_match=0.95`) |
+| `tbkv_raw` | TBKV raw cache (no merging, higher recall) |
+| `tbkv_tome` | TBKV with ToMe as the merge strategy |
+| `temporal_24` | Temporal-only token pruning, 24 frames |
 
-Any config key can be overridden on the command line:
+Any config key can be overridden directly on the command line:
+
 ```bash
-python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=500 model.spatial_config.block_config.local_merge_ratio=0.3
+# Sweep merge ratio
+python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=500 \
+  model.spatial_config.block_config.local_merge_ratio=0.3
+
+# Sweep match threshold
+python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=500 \
+  model.spatial_config.block_config.r_match=0.90
+```
+
+### Live Progress
+
+The evaluation logs a summary line every 10 videos so you can monitor progress in real time:
+
+```
+[ 10/1000]  Top-1: 80.0%  Top-5: 100.0%  Matching linear_flops: 2.241e+12
+[ 20/1000]  Top-1: 80.0%  Top-5:  95.0%  Matching linear_flops: 2.284e+12
 ```
 
 ### Output
 
 Results are written to `results/evaluate/vivit_kinetics400/<config_name>/`:
 
-- `output.txt` — full evaluation report printed to terminal (caching pass stats, matching pass stats, per-block breakdown)
-- `metrics.csv` — Top-1 and Top-5 accuracy
-- `counts.csv` — FLOPs breakdown (linear, matmul, add, bias)
+| File | Contents |
+|------|----------|
+| `output.txt` | Full report: caching stats, matching stats, per-block breakdown |
+| `metrics.csv` | Top-1 and Top-5 accuracy |
+| `counts.csv` | FLOPs breakdown (linear, matmul, add, bias) |
 
-The terminal report includes live per-video progress every 10 videos:
+The `output.txt` report is structured as follows:
+
 ```
-[ 10/1000]  Top-1: 80.0%  Top-5: 100.0%  Matching linear_flops: 2.241e+12
-[ 20/1000]  Top-1: 80.0%  Top-5:  95.0%  Matching linear_flops: 2.284e+12
+================
+  CACHING PASS
+================
+  Frames used for caching : 16
+  FLOPs breakdown (avg per video): ...
+
+  Per-block stats (averaged over caching frames × videos):
+    [spatial_model.backbone.blocks.0]
+      avg foreground tokens         : 115.3
+      avg background tokens         : 92.5
+      cached tokens (total, final)  : 624
+      avg merged tokens added/frame : 46.4
+      avg merge factor (bg→merged)  : 1.99x
+      cache K+V memory              : 46.006 MB
+
+=================
+  MATCHING PASS
+=================
+  Top-1 Accuracy              : 80.00%
+  Top-5 Accuracy              : 100.00%
+  FLOPs breakdown (avg per video): ...
+  Matching algorithm FLOPs    : 8.76e+09
+  KV FLOPs saved vs. baseline : 1.55e+10
+  Net FLOPs savings           : 6.72e+09
+
+  Per-block stats (averaged over matching frames × videos):
+    [spatial_model.backbone.blocks.1]
+      avg tokens matched (bg reused)  : 86.5
+      avg cache entries used          : 47.7
+      avg final tokens (fg+bg+cached) : 187.6
 ```
 
-### Sample results (25 videos)
+### Ablation Studies
 
-| | Vanilla ViViT | TBKV ViViT (matching pass) |
-|---|---|---|
-| Top-1 | ~66–72% | ~80–84% *(sampling noise at n=25)* |
-| Top-5 | ~91–97% | ~96–100% |
-| `linear_flops` | 3.218e+12 | ~2.28e+12 (**−29%**) |
-| `matmul_flops` | 1.374e+11 | ~7.97e+10 (**−42%**) |
-| Net KV savings/video | — | ~7.15e+09 |
+To systematically sweep hyperparameters, use `scripts/evaluate/sweep_tbkv.py` which loops over merge ratios [0.1–0.5] and saves all statistics to a JSON:
 
-> Accuracy differences at small sample sizes are due to sampling variance. Run with `n_items=1000` or more for stable accuracy estimates.
+```bash
+python scripts/evaluate/sweep_tbkv.py
+```
+
+Then visualize with:
+
+```bash
+python scripts/evaluate/plot_from_sweep.py
+python scripts/evaluate/plot_tbkv_flops_accuracy.py
+```
+
+To sweep the number of caching frames $P$:
+
+```bash
+python scripts/evaluate/sweep_p_frames.py
+python scripts/evaluate/plot_p_frames.py
+```
+
+### Other Evaluation Tasks
+
+**EPIC-Kitchens:**
+```bash
+python scripts/evaluate/vivit_epic_kitchens.py <config_name>
+```
+
+**ImageNet VID (ViTDet):**
+```bash
+python scripts/evaluate/vitdet_vid.py <config_name>
+```
+
+## Fine-Tuning
+
+Some evaluation configs require a fine-tuned temporal sub-model. To fine-tune from scratch:
+
+1. Run spatial pre-caching:
+```bash
+python scripts/spatial/vivit_epic_kitchens.py <config>
+```
+
+2. Run training:
+```bash
+python scripts/train/vivit_epic_kitchens.py <config>
+```
+
+This produces `weights/vivit_b_epic_kitchens_final_<N>.pth`.
+
+## Troubleshooting
+
+**No terminal output during evaluation**
+```bash
+# Always run with these flags:
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output python ...
+```
+
+**CUDA out of memory**
+```bash
+# TBKV is batch_size=1 by design. If OOM occurs, reduce n_cache_frames:
+python scripts/evaluate/tbkv_vivit_kinetics400.py tbkv n_items=100 frame_split=8
+```
+
+**Dataset download fails**
+```bash
+# Manually place Kinetics-400 validation frames under:
+# data/kinetics400/val/<class_name>/<video_id>/frame_%06d.jpg
+```
+
+**ModuleNotFoundError**
+```bash
+# Ensure the repo root is on PYTHONPATH
+export PYTHONPATH="$PYTHONPATH:."
+conda activate eventful-transformer
+python -c "from src.tbkv.tbkv_blocks import TBKVBlock; print('OK')"
+```
+
+## Code Style
+
+Format with [Black](https://black.readthedocs.io/en/stable/) using the default 88-character line limit:
+
+```bash
+black <FILE>
+```
+
+## References
+
+- **Eventful Transformers** (ICCV 2023): [paper](https://arxiv.org/abs/2308.13494) · [project page](https://wisionlab.com/project/eventful-transformers/)
+- **ViViT**: Arnab et al., "ViViT: A Video Vision Transformer", ICCV 2021
+- **ToMe**: Bolya et al., "Token Merging: Your ViT but Faster", ICLR 2023
+- **TAdaConv** (ViViT weights): [model zoo](https://github.com/alibaba-mmai-research/TAdaConv/blob/main/MODEL_ZOO.md)
+- **Kinetics-400**: [DeepMind](https://www.deepmind.com/open-source/kinetics)
+

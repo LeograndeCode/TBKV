@@ -17,6 +17,8 @@ from .helpers import (
     _aggregate_caching_stats,
     _aggregate_matching_stats,
     save_csv_results,
+    _print_caching_stats,
+    _print_matching_stats,
 )
 
 

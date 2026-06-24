@@ -43,7 +43,9 @@ def evaluate_vivit_metrics(device, model, data, config):
     for idx, (video, label) in tqdm(enumerate(data_loader), total=n_items, ncols=0, file=sys.stdout):
         if idx >= n_items:
             break
-
+    
+        # Clear cache between clips
+        model.clear_cache()
         video_cache = video[:, :n_cache_frames].to(device)
         video_match = video[:, n_cache_frames:].to(device)
         if video_match.shape[1] == 0:

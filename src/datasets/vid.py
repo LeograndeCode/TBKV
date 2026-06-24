@@ -144,7 +144,9 @@ class VID(Dataset):
         (base_path / "unpacked").unlink(missing_ok=True)
         for split in SPLITS:
             split_path = base_path / split
-            if split_path.is_dir():
+            if split_path.is_symlink():
+                split_path.unlink(missing_ok=True)
+            elif split_path.is_dir():
                 shutil.rmtree(split_path)
 
     @staticmethod
@@ -180,7 +182,7 @@ class VID(Dataset):
             split_path = base_path / split
             split_path.mkdir(exist_ok=True)
             annotations_path = unpacked_path / "annotations" / f"{split}.json"
-            annotations_path.rename(split_path / "labels.json")
+            shutil.move(str(annotations_path), str(split_path / "labels.json"))
 
         # Reorganize the images.
         for split in SPLITS[:-1]:
@@ -191,7 +193,7 @@ class VID(Dataset):
                 video_id, frame_number = filename.stem.split("_")[-2:]
                 video_path = frames_path / video_id
                 video_path.mkdir(exist_ok=True)
-                filename.rename(video_path / f"{frame_number}.jpg")
+                shutil.move(str(filename), str(video_path / f"{frame_number}.jpg"))
 
         # Symlink vid_minival/frames to vid_val/frames.
         link_from = base_path / SPLITS[-1] / "frames"
@@ -200,7 +202,17 @@ class VID(Dataset):
         print(f"Reorganization complete.", file=stderr, flush=True)
 
         # Clean up and create an empty indicator file.
-        shutil.rmtree(unpacked_path)
+        # Some archives/filesystems can temporarily report residual files after
+        # large move operations; do not fail dataset setup on cleanup only.
+        try:
+            shutil.rmtree(unpacked_path)
+        except OSError as exc:
+            print(
+                f"Warning: failed to fully remove temporary path {unpacked_path}: {exc}",
+                file=stderr,
+                flush=True,
+            )
+            shutil.rmtree(unpacked_path, ignore_errors=True)
         (base_path / "unpacked").touch()
 
     @staticmethod

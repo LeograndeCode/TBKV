@@ -375,19 +375,22 @@ class TBKVBlock(Block):
             else:
                 # Merged mode: merge background tokens for this frame, then accumulate.
                 if self.has_class_token:
-                    N_patch = N - 1
+                    B_merge = v.shape[0]
+                    N_patch = v.shape[2] - 1
                     k_patch = k[:, :, 1:, :]       # [B, H, N_patch, head_dim]
                     v_patch = v[:, :, 1:, :]
                     attn_patch = x[:, :, 1:, 1:]   # [B, H, N_patch, N_patch]
-                    x_for_merge = v_patch.transpose(1, 2).reshape(B, N_patch, H * head_dim)
+                    x_for_merge = v_patch.transpose(1, 2).reshape(B_merge, N_patch, H * head_dim)
                     k_new, v_new, tok_new, _n_bg, _n_fg = merging(
                         x=x_for_merge, attn_map=attn_patch,
                         k=k_patch, v=v_patch,
                         local_merge_ratio=self.local_merge_ratio
                     )
                 else:
+                    B_merge = v.shape[0]
+                    n_tokens = v.shape[2]
                     k_new, v_new, tok_new, _n_bg, _n_fg = merging(
-                        x=v.transpose(1, 2).reshape(B, N, H * head_dim),
+                        x=v.transpose(1, 2).reshape(B_merge, n_tokens, H * head_dim),
                         attn_map=x,
                         k=k, v=v,
                         local_merge_ratio=self.local_merge_ratio

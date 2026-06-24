@@ -4,11 +4,11 @@ _output: "results/evaluate/vivit_kinetics400/${_name}/"
 model:
   spatial_config:
     block_config:
-      local_merge_ratio: 0.5
+      local_merge_ratio: 0.75
       r_match: 0.95
       caching: true
   temporal_config:
     block_config:
-      local_merge_ratio: 0.5
+      local_merge_ratio: 0.75
       r_match: 0.95
       caching: true

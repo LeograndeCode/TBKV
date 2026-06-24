@@ -3,14 +3,21 @@
 Ablation sweep: local_merge_ratio × r_match for TBKV ViViT on Kinetics-400.
 
 Usage:
-    python scripts/evaluate/vivit_kinetics400_ablation.py tbkv n_items=25
-    python scripts/evaluate/vivit_kinetics400_ablation.py tbkv n_items=1000
+    python scripts/evaluate/vivit_kinetics400_ablation.py tbkv_ablation n_items=25
+    python scripts/evaluate/vivit_kinetics400_ablation.py tbkv_ablation n_items=1000
 
 Any config key can be overridden on the command line as KEY=VALUE, e.g.:
-    python scripts/evaluate/vivit_kinetics400_ablation.py tbkv \\
+    python scripts/evaluate/vivit_kinetics400_ablation.py tbkv_ablation \
         n_items=50 \\
-        merge_values=[0.5,0.75] \\
-        r_match_values=[0.75,0.95,1.0]
+        local_merge_ratio=[0.5,0.75] \
+        r_match=[0.75,0.95,1.0]
+
+Supported sweep keys in YAML:
+    local_merge_ratio: [..]
+    r_match: [..]
+or nested under:
+    ablation.local_merge_ratio
+    ablation.r_match
 """
 
 import sys

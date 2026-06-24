@@ -4,6 +4,9 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 def get_cli_config(config_location="."):
     # Parse command-line arguments.
     parser = ArgumentParser()
@@ -17,7 +20,12 @@ def get_cli_config(config_location="."):
     args = parser.parse_args()
 
     # Merge the configuration file and command-line overrides.
-    config_path = Path(config_location, f"{args.name}.yml")
+    # Support either a config name (legacy) or a direct .yml path.
+    requested = Path(args.name)
+    if requested.is_file():
+        config_path = requested
+    else:
+        config_path = Path(config_location, f"{args.name}.yml")
     config = load_config(config_path, to_container=False)
     config = OmegaConf.merge(config, OmegaConf.from_dotlist(args.overrides))
 
@@ -50,7 +58,16 @@ def load_config(config_path, to_container=True):
     defaults = []
     for defaults_path in config.pop("_defaults", []):
         relative_path = Path(config_path).parent / defaults_path
-        chosen_path = relative_path if relative_path.is_file() else defaults_path
+        cwd_path = Path(defaults_path)
+        repo_path = REPO_ROOT / defaults_path
+        if relative_path.is_file():
+            chosen_path = relative_path
+        elif cwd_path.is_file():
+            chosen_path = cwd_path
+        elif repo_path.is_file():
+            chosen_path = repo_path
+        else:
+            chosen_path = defaults_path
         defaults.append(load_config(chosen_path, to_container=False))
     config = OmegaConf.merge(*defaults, config)
     return OmegaConf.to_container(config, resolve=True) if to_container else config

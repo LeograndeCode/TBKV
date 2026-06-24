@@ -12,7 +12,7 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
 from src.datasets.vid import VIDResize, VID
-from src.models.vitdet import ViTDet
+from src.models.tbkv_vitdet import TBKVViTDet
 from src.utils.config import initialize_run
 from src.utils.evaluate import run_evaluations
 from src.utils.misc import dict_to_device, squeeze_dict
@@ -46,7 +46,7 @@ def evaluate_vitdet_metrics(device, model, data, config):
 
 
 def main():
-    
+    torch.cuda.empty_cache()
     config = initialize_run(
         config_location=REPO_ROOT / "configs" / "evaluate" / "vitdet_vid"
     )
@@ -66,7 +66,7 @@ def main():
             short_edge_length=640 * long_edge // 1024, max_size=long_edge
         ),
     )
-    run_evaluations(config, ViTDet, data, evaluate_vitdet_metrics)
+    run_evaluations(config, TBKVViTDet, data, evaluate_vitdet_metrics)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+_defaults:
+  - "_tbkv.yml"
+
+r_match: [0.25, 0.5, 0.75, 0.95, 1]
+local_merge_ratio: [0.25, 0.5, 0.75, 0.95]
+

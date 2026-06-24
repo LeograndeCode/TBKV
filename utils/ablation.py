@@ -1,12 +1,17 @@
 """
 Ablation utilities for sweeping TBKV hyperparameters.
 
-Provides run_evaluations() which loops over a Cartesian product of
-merge_values × r_match_values, evaluates the model for each combination,
-and writes a summary CSV to the output directory.
+Sweeps are read from YAML config (preferred keys):
+    - local_merge_ratio: [..]
+    - r_match: [..]
 
-Usage (from vivit_kinetics400_ablation.py):
-    from utils.ablation import run_evaluations, evaluate_vivit_metrics
+Backward-compatible aliases are also supported:
+    - merge_values
+    - r_match_values
+
+Nested configuration is supported as well:
+    - ablation.local_merge_ratio
+    - ablation.r_match
 """
 
 import copy
@@ -17,10 +22,6 @@ import torch
 
 from src.utils.misc import get_pytorch_device
 from utils.evaluate import evaluate_vivit_metrics  # reuse the two-pass eval loop
-
-# Default sweep values
-MERGE_VALUES   = [0.25, 0.5, 0.75, 0.9]
-R_MATCH_VALUES = [0.25, 0.5, 0.75, 0.95, 1.00]
 
 
 def _set_block_param(config: dict, key: str, value) -> dict:
@@ -34,6 +35,42 @@ def _set_block_param(config: dict, key: str, value) -> dict:
     return cfg
 
 
+def _as_list(value):
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def _find_first_present(config: dict, keys):
+    for key in keys:
+        cur = config
+        found = True
+        for part in key.split("."):
+            if isinstance(cur, dict) and part in cur:
+                cur = cur[part]
+            else:
+                found = False
+                break
+        if found:
+            return cur
+    return None
+
+
+def _resolve_sweep_values(config: dict, name: str, aliases, model_fallback_paths):
+    value = _find_first_present(config, [f"ablation.{name}", name, *aliases])
+    if value is None:
+        value = _find_first_present(config, model_fallback_paths)
+    if value is None:
+        raise ValueError(
+            "Missing ablation sweep values for "
+            f"'{name}'. Add one of: '{name}', 'ablation.{name}', or one of {aliases}."
+        )
+    values = _as_list(value)
+    if len(values) == 0:
+        raise ValueError(f"Ablation sweep list for '{name}' is empty.")
+    return values
+
+
 def run_evaluations(config, model_class, data, evaluate_function):
     """
     Sweep merge_value × r_match and write results per combo.
@@ -45,8 +82,24 @@ def run_evaluations(config, model_class, data, evaluate_function):
     if "threads" in config:
         torch.set_num_threads(config["threads"])
 
-    merge_values   = config.get("merge_values",   MERGE_VALUES)
-    r_match_values = config.get("r_match_values", R_MATCH_VALUES)
+    merge_values = _resolve_sweep_values(
+        config,
+        name="local_merge_ratio",
+        aliases=["merge_values"],
+        model_fallback_paths=[
+            "model.spatial_config.block_config.local_merge_ratio",
+            "model.temporal_config.block_config.local_merge_ratio",
+        ],
+    )
+    r_match_values = _resolve_sweep_values(
+        config,
+        name="r_match",
+        aliases=["r_match_values"],
+        model_fallback_paths=[
+            "model.spatial_config.block_config.r_match",
+            "model.temporal_config.block_config.r_match",
+        ],
+    )
 
     output_dir = Path(config["_output"])
     output_dir.mkdir(parents=True, exist_ok=True)

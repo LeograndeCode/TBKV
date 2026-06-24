@@ -38,10 +38,14 @@ class TBKVViTBackbone(ViTBackbone):
                 block_config_i["window_size"] = None
             new_blocks.append(TBKVBlock(input_size=input_size, has_class_token=has_class_token, **block_config_i, **tbkv_config))
         self.blocks = new_blocks
-
+    
+    
     def forward(self, x):
         x = self.position_encoding(x)
         prev_attnmap = None
         for block in self.blocks:
             x, prev_attnmap = block(x, prev_attnmap) 
+        #Reset model after usage
+        for block in self.blocks:
+            block.reset_self()
         return x

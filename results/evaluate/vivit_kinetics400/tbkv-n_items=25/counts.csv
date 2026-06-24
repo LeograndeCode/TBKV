@@ -2,3 +2,5 @@ add_flops,bias_flops,linear_flops,matmul_flops
 5.50516e+08,2.19157e+09,2.28367e+12,7.96772e+10
 add_flops,bias_flops,linear_flops,matmul_flops
 5.5035e+08,2.1909e+09,2.28297e+12,7.9649e+10
+add_flops,bias_flops,linear_flops,matmul_flops
+5.49724e+08,2.18824e+09,2.28021e+12,7.95493e+10

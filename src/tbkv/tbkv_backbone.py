@@ -27,7 +27,15 @@ class TBKVViTBackbone(ViTBackbone):
             windowed_class=windowed_class,
             windowed_overrides=windowed_overrides,
         )
+
         # Replace all Block instances with TBKVBlock instances.
+        # Layer-wise adaptive matching ratio (FrameFusion, ICCV 2025).
+        # Early blocks get aggressive reuse (high r_match).
+        # Deep blocks get conservative reuse (low r_match).
+        r_match_base = tbkv_config.get("r_match", 0.75)
+        r_max = min(r_match_base + 0.10, 0.95)
+        r_min = max(r_match_base - 0.10, 0.30)
+
         new_blocks = nn.Sequential()
         for i in range(depth):
             block_config_i = block_config.copy()
@@ -36,7 +44,18 @@ class TBKVViTBackbone(ViTBackbone):
                     block_config_i |= windowed_overrides
             else:
                 block_config_i["window_size"] = None
-            new_blocks.append(TBKVBlock(input_size=input_size, has_class_token=has_class_token, **block_config_i, **tbkv_config))
+
+            # Compute per-layer r_match using linear schedule
+            if depth > 1:
+                r_match_i = r_max - (i / (depth - 1)) * (r_max - r_min)
+            else:
+                r_match_i = r_match_base
+
+            # Override r_match for this specific block
+            tbkv_config_i = tbkv_config.copy()
+            tbkv_config_i["r_match"] = r_match_i
+
+            new_blocks.append(TBKVBlock(input_size=input_size, has_class_token=has_class_token, **block_config_i, **tbkv_config_i))
         self.blocks = new_blocks
 
     def forward(self, x):

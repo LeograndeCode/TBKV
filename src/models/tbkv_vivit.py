@@ -97,11 +97,22 @@ class TBKVFactorizedViViT(ExtendedModule):
 
     def set_mode(self, mode):
         """Switch all TBKVBlocks between 'caching' and 'matching' modes."""
-        from src.tbkv.tbkv_blocks import TBKVBlock
+        if mode not in {"caching", "matching"}:
+            raise ValueError(f"Unknown mode '{mode}'. Expected 'caching' or 'matching'.")
         caching = (mode == "caching")
         for module in self.modules():
-            if isinstance(module, TBKVBlock):
+            # Use capability checks instead of strict class identity so this
+            # still works if TBKVBlock is imported through a different module path.
+            if hasattr(module, "caching") and hasattr(module, "cache"):
                 module.caching = caching
+
+    def clear_cache(self):
+        """Clear TBKV block caches between videos."""
+        for module in self.modules():
+            if hasattr(module, "cache"):
+                module.cache = None
+            if hasattr(module, "prev_attn_map"):
+                module.prev_attn_map = None
 
     def forward(self, x):
         batch_size = x.shape[0]

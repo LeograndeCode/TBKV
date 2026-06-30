@@ -58,7 +58,7 @@ def merging(x, attn_map, k, v, local_merge_ratio):
 
 class TBKVBlock(Block):
 
-    def __init__(self, local_merge_ratio: float = 0.5, r_match: float = 0.75, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, **super_kwargs):
+    def __init__(self, local_merge_ratio: float = 0.5, r_match: float = 0.75, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, tome_r_ratio: float = 0.0, **super_kwargs):
 
         super().__init__(**super_kwargs)
 
@@ -70,6 +70,7 @@ class TBKVBlock(Block):
         self.raw = raw
         self.use_tome = use_tome
         self.tome_r = tome_r
+        self.tome_r_ratio = tome_r_ratio
         self.cache = None  
         self.prev_attn_map = None
 
@@ -174,8 +175,12 @@ class TBKVBlock(Block):
 
             # q: [B,H,N_q,hd]  k,v: [B,H,N_kv,hd]  new_tokens: [B,N_q,C]
             if self.use_tome:
+                # bipartite_soft_matching treats r as a ratio (multiplies by n_tokens
+                # internally), so pass tome_r_ratio directly.
+                # tome_r (int) is legacy and should not be used with ratio mode.
+                effective_r = self.tome_r_ratio if self.tome_r_ratio > 0.0 else self.tome_r
                 _tome_info = {
-                    "r":             [self.tome_r],
+                    "r":             [effective_r],
                     "class_token":   self.has_class_token,
                     "distill_token": False,
                     "trace_source":  False,

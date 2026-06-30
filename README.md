@@ -282,13 +282,24 @@ The `output.txt` report is structured as follows:
 
 ### Ablation Studies
 
-To systematically sweep hyperparameters, use `scripts/evaluate/sweep_tbkv.py` which loops over merge ratios [0.1–0.5] and saves all statistics to a JSON:
+For TBKV ViViT ablations on Kinetics-400, use `scripts/evaluate/vivit_kinetics400_ablation.py` with `tbkv_ablation`:
 
 ```bash
-python scripts/evaluate/sweep_tbkv.py
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/vivit_kinetics400_ablation.py tbkv_ablation \
+  n_items=50 \
+  local_merge_ratio=[0.5,0.75] \
+  r_match=[0.75,0.95,1.0]
 ```
 
-Then visualize with:
+Quick smoke test:
+
+```bash
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/vivit_kinetics400_ablation.py tbkv_ablation n_items=25
+```
+
+Then visualize saved sweep outputs with:
 
 ```bash
 python scripts/evaluate/plot_from_sweep.py
@@ -311,8 +322,16 @@ python scripts/evaluate/vivit_epic_kitchens.py <config_name>
 
 **ImageNet VID (ViTDet):**
 ```bash
-python scripts/evaluate/vitdet_vid.py <config_name>
+# TBKV ViTDet
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/tbkv_vitdet_vid.py _tbkv n_items=5
+
+# Vanilla ViTDet baseline (use base_672)
+PYTHONUNBUFFERED=1 conda run -n eventful-transformer --no-capture-output \
+  python scripts/evaluate/vitdet_vid.py base_672 n_items=5
 ```
+
+`base_672` is the vanilla baseline config. `_base` is a shared base config fragment and is not intended as a standalone vanilla run target.
 
 ## Fine-Tuning
 

@@ -14,7 +14,7 @@ from tqdm import tqdm
 from src.datasets.vid import VIDResize, VID
 from src.models.tbkv_vitdet import TBKVViTDet
 from src.utils.config import initialize_run
-from src.utils.evaluate import run_evaluations
+from src.utils.evaluate_tbkv import run_evaluations
 from src.utils.misc import dict_to_device, squeeze_dict
 
 
@@ -25,11 +25,16 @@ def evaluate_vitdet_metrics(device, model, data, config):
     outputs = []
     labels = []
     n_items = config.get("n_items", len(data))
+    n_cache_frames = config.get("n_cache_frames", 1)
+    max_frames = config.get("max_frames", None)
     for _, vid_item in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
         vid_item = DataLoader(vid_item, batch_size=1)
-        n_frames += len(vid_item)
         model.reset()
-        for frame, annotations in vid_item:
+        for frame_idx, (frame, annotations) in enumerate(vid_item):
+            if max_frames is not None and frame_idx >= max_frames:
+                break
+            n_frames += 1
+            model.set_mode("caching" if frame_idx < n_cache_frames else "matching")
             with torch.inference_mode():
                 outputs.extend(model(frame.to(device)))
             labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))

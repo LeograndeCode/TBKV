@@ -16,6 +16,18 @@ try:
 except ImportError:
     _TOME_AVAILABLE = False
 
+    # Fallback implementations so tbkv_tome works even without external ToMe package.
+    def merge_source(merge, x, source):
+        return source
+
+    def merge_wavg(merge, x, size=None):
+        if size is None:
+            size = torch.ones(x.shape[0], x.shape[1], 1, device=x.device, dtype=x.dtype)
+        x = merge(x * size, mode="sum")
+        size = merge(size, mode="sum")
+        x = x / (size + 1e-6)
+        return x, size
+
 
 def mps_gather_workaround(input, dim, index):
     # MPS gather workaround: move to CPU, gather, move back

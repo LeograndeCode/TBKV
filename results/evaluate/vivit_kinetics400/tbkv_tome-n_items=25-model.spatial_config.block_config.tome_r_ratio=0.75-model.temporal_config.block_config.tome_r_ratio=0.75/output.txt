@@ -1,0 +1,408 @@
+Evaluation
+Quadro RTX 6000
+
+Videos evaluated: 25
+
+================
+  CACHING PASS
+================
+  Frames used for caching : 16
+  FLOPs breakdown (caching mechanism, avg per video):
+    add_flops:    7.276e+08
+    bias_flops:   3.143e+09
+    linear_flops: 3.218e+12
+    matmul_flops: 1.374e+11
+
+  Per-block stats  (averaged over caching frames × videos):
+    [spatial_model.backbone.blocks.0]
+      avg foreground tokens          : 92.5
+      avg background tokens          : 115.3
+      cached tokens (total, final)   : 1024
+      avg merged tokens added/frame  : 57.9
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 75.497 MB
+    [spatial_model.backbone.blocks.1]
+      avg foreground tokens          : 89.2
+      avg background tokens          : 117.2
+      cached tokens (total, final)   : 928
+      avg merged tokens added/frame  : 58.9
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 68.420 MB
+    [spatial_model.backbone.blocks.2]
+      avg foreground tokens          : 95.8
+      avg background tokens          : 109.7
+      cached tokens (total, final)   : 768
+      avg merged tokens added/frame  : 55.1
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 56.623 MB
+    [spatial_model.backbone.blocks.3]
+      avg foreground tokens          : 94.2
+      avg background tokens          : 114.0
+      cached tokens (total, final)   : 976
+      avg merged tokens added/frame  : 57.3
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 71.959 MB
+    [spatial_model.backbone.blocks.4]
+      avg foreground tokens          : 96.2
+      avg background tokens          : 112.8
+      cached tokens (total, final)   : 832
+      avg merged tokens added/frame  : 56.7
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 61.342 MB
+    [spatial_model.backbone.blocks.5]
+      avg foreground tokens          : 93.6
+      avg background tokens          : 115.7
+      cached tokens (total, final)   : 800
+      avg merged tokens added/frame  : 58.1
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 58.982 MB
+    [spatial_model.backbone.blocks.6]
+      avg foreground tokens          : 94.2
+      avg background tokens          : 114.1
+      cached tokens (total, final)   : 560
+      avg merged tokens added/frame  : 57.3
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 41.288 MB
+    [spatial_model.backbone.blocks.7]
+      avg foreground tokens          : 104.6
+      avg background tokens          : 105.1
+      cached tokens (total, final)   : 800
+      avg merged tokens added/frame  : 52.8
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 58.982 MB
+    [spatial_model.backbone.blocks.8]
+      avg foreground tokens          : 106.1
+      avg background tokens          : 103.2
+      cached tokens (total, final)   : 752
+      avg merged tokens added/frame  : 51.9
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 55.443 MB
+    [spatial_model.backbone.blocks.9]
+      avg foreground tokens          : 117.9
+      avg background tokens          : 91.0
+      cached tokens (total, final)   : 368
+      avg merged tokens added/frame  : 45.8
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 27.132 MB
+    [spatial_model.backbone.blocks.10]
+      avg foreground tokens          : 106.0
+      avg background tokens          : 100.9
+      cached tokens (total, final)   : 448
+      avg merged tokens added/frame  : 50.7
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 33.030 MB
+    [spatial_model.backbone.blocks.11]
+      avg foreground tokens          : 101.9
+      avg background tokens          : 107.7
+      cached tokens (total, final)   : 560
+      avg merged tokens added/frame  : 54.2
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 41.288 MB
+    [temporal_model.backbone.blocks.0]
+      avg foreground tokens          : 6.8
+      avg background tokens          : 10.8
+      cached tokens (total, final)   : 6
+      avg merged tokens added/frame  : 5.6
+      avg merge factor  (bg→merged)  : 1.92x
+      cache K+V memory               : 0.442 MB
+    [temporal_model.backbone.blocks.1]
+      avg foreground tokens          : 11.2
+      avg background tokens          : 7.4
+      cached tokens (total, final)   : 2
+      avg merged tokens added/frame  : 3.9
+      avg merge factor  (bg→merged)  : 1.89x
+      cache K+V memory               : 0.147 MB
+    [temporal_model.backbone.blocks.2]
+      avg foreground tokens          : 11.0
+      avg background tokens          : 7.5
+      cached tokens (total, final)   : 3
+      avg merged tokens added/frame  : 4.0
+      avg merge factor  (bg→merged)  : 1.88x
+      cache K+V memory               : 0.221 MB
+    [temporal_model.backbone.blocks.3]
+      avg foreground tokens          : 10.7
+      avg background tokens          : 8.0
+      cached tokens (total, final)   : 3
+      avg merged tokens added/frame  : 4.3
+      avg merge factor  (bg→merged)  : 1.87x
+      cache K+V memory               : 0.221 MB
+
+=================
+  MATCHING PASS
+=================
+  Top-1 Accuracy              : 60.00%
+  Top-5 Accuracy              : 76.00%
+
+  FLOPs breakdown (matching pass, avg per video):
+    add_flops:    2.459e+08
+    bias_flops:   9.383e+08
+    linear_flops: 9.703e+11
+    matmul_flops: 2.246e+10
+
+  Matching algorithm FLOPs    : 5.0601e+09
+  KV FLOPs saved vs. baseline : 8.1377e+09
+  Net FLOPs savings           : 3.0776e+09
+
+  Per-block stats  (averaged over matching frames × videos):
+    [spatial_model.backbone.blocks.1]
+      avg tokens matched (bg reused)   : 116.2
+      avg cache entries used            : 75.9
+      avg final tokens (fg+bg+cached)  : 181.3
+    [spatial_model.backbone.blocks.2]
+      avg tokens matched (bg reused)   : 77.4
+      avg cache entries used            : 40.3
+      avg final tokens (fg+bg+cached)  : 109.0
+    [spatial_model.backbone.blocks.3]
+      avg tokens matched (bg reused)   : 43.6
+      avg cache entries used            : 33.1
+      avg final tokens (fg+bg+cached)  : 78.3
+    [spatial_model.backbone.blocks.4]
+      avg tokens matched (bg reused)   : 34.8
+      avg cache entries used            : 28.3
+      avg final tokens (fg+bg+cached)  : 61.9
+    [spatial_model.backbone.blocks.5]
+      avg tokens matched (bg reused)   : 32.2
+      avg cache entries used            : 25.7
+      avg final tokens (fg+bg+cached)  : 51.0
+    [spatial_model.backbone.blocks.6]
+      avg tokens matched (bg reused)   : 27.4
+      avg cache entries used            : 21.7
+      avg final tokens (fg+bg+cached)  : 44.7
+    [spatial_model.backbone.blocks.7]
+      avg tokens matched (bg reused)   : 23.9
+      avg cache entries used            : 19.4
+      avg final tokens (fg+bg+cached)  : 39.6
+    [spatial_model.backbone.blocks.8]
+      avg tokens matched (bg reused)   : 21.1
+      avg cache entries used            : 17.5
+      avg final tokens (fg+bg+cached)  : 36.7
+    [spatial_model.backbone.blocks.9]
+      avg tokens matched (bg reused)   : 19.1
+      avg cache entries used            : 15.9
+      avg final tokens (fg+bg+cached)  : 34.0
+    [spatial_model.backbone.blocks.10]
+      avg tokens matched (bg reused)   : 17.9
+      avg cache entries used            : 15.2
+      avg final tokens (fg+bg+cached)  : 31.6
+    [spatial_model.backbone.blocks.11]
+      avg tokens matched (bg reused)   : 16.5
+      avg cache entries used            : 13.3
+      avg final tokens (fg+bg+cached)  : 29.0
+    [temporal_model.backbone.blocks.1]
+      avg tokens matched (bg reused)   : 9.8
+      avg cache entries used            : 2.7
+      avg final tokens (fg+bg+cached)  : 13.0
+    [temporal_model.backbone.blocks.2]
+      avg tokens matched (bg reused)   : 2.3
+      avg cache entries used            : 1.6
+      avg final tokens (fg+bg+cached)  : 9.0
+    [temporal_model.backbone.blocks.3]
+      avg tokens matched (bg reused)   : 2.4
+      avg cache entries used            : 2.0
+      avg final tokens (fg+bg+cached)  : 7.5
+
+
+Evaluation
+Quadro RTX 6000
+
+Videos evaluated: 25
+
+================
+  CACHING PASS
+================
+  Frames used for caching : 16
+  FLOPs breakdown (caching mechanism, avg per video):
+    add_flops:    7.276e+08
+    bias_flops:   3.143e+09
+    linear_flops: 3.218e+12
+    matmul_flops: 1.374e+11
+
+  Per-block stats  (averaged over caching frames × videos):
+    [spatial_model.backbone.blocks.0]
+      avg foreground tokens          : 92.5
+      avg background tokens          : 115.3
+      cached tokens (total, final)   : 1024
+      avg merged tokens added/frame  : 57.9
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 75.497 MB
+    [spatial_model.backbone.blocks.1]
+      avg foreground tokens          : 89.2
+      avg background tokens          : 117.2
+      cached tokens (total, final)   : 928
+      avg merged tokens added/frame  : 58.9
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 68.420 MB
+    [spatial_model.backbone.blocks.2]
+      avg foreground tokens          : 95.8
+      avg background tokens          : 109.7
+      cached tokens (total, final)   : 768
+      avg merged tokens added/frame  : 55.1
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 56.623 MB
+    [spatial_model.backbone.blocks.3]
+      avg foreground tokens          : 94.2
+      avg background tokens          : 114.0
+      cached tokens (total, final)   : 976
+      avg merged tokens added/frame  : 57.3
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 71.959 MB
+    [spatial_model.backbone.blocks.4]
+      avg foreground tokens          : 96.2
+      avg background tokens          : 112.8
+      cached tokens (total, final)   : 832
+      avg merged tokens added/frame  : 56.7
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 61.342 MB
+    [spatial_model.backbone.blocks.5]
+      avg foreground tokens          : 93.6
+      avg background tokens          : 115.7
+      cached tokens (total, final)   : 800
+      avg merged tokens added/frame  : 58.1
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 58.982 MB
+    [spatial_model.backbone.blocks.6]
+      avg foreground tokens          : 94.2
+      avg background tokens          : 114.1
+      cached tokens (total, final)   : 560
+      avg merged tokens added/frame  : 57.3
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 41.288 MB
+    [spatial_model.backbone.blocks.7]
+      avg foreground tokens          : 104.6
+      avg background tokens          : 105.1
+      cached tokens (total, final)   : 800
+      avg merged tokens added/frame  : 52.8
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 58.982 MB
+    [spatial_model.backbone.blocks.8]
+      avg foreground tokens          : 106.1
+      avg background tokens          : 103.2
+      cached tokens (total, final)   : 752
+      avg merged tokens added/frame  : 51.9
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 55.443 MB
+    [spatial_model.backbone.blocks.9]
+      avg foreground tokens          : 117.9
+      avg background tokens          : 91.0
+      cached tokens (total, final)   : 368
+      avg merged tokens added/frame  : 45.8
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 27.132 MB
+    [spatial_model.backbone.blocks.10]
+      avg foreground tokens          : 106.0
+      avg background tokens          : 100.9
+      cached tokens (total, final)   : 448
+      avg merged tokens added/frame  : 50.7
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 33.030 MB
+    [spatial_model.backbone.blocks.11]
+      avg foreground tokens          : 101.9
+      avg background tokens          : 107.7
+      cached tokens (total, final)   : 560
+      avg merged tokens added/frame  : 54.2
+      avg merge factor  (bg→merged)  : 1.99x
+      cache K+V memory               : 41.288 MB
+    [temporal_model.backbone.blocks.0]
+      avg foreground tokens          : 6.8
+      avg background tokens          : 10.8
+      cached tokens (total, final)   : 6
+      avg merged tokens added/frame  : 5.6
+      avg merge factor  (bg→merged)  : 1.92x
+      cache K+V memory               : 0.442 MB
+    [temporal_model.backbone.blocks.1]
+      avg foreground tokens          : 11.2
+      avg background tokens          : 7.4
+      cached tokens (total, final)   : 2
+      avg merged tokens added/frame  : 3.9
+      avg merge factor  (bg→merged)  : 1.89x
+      cache K+V memory               : 0.147 MB
+    [temporal_model.backbone.blocks.2]
+      avg foreground tokens          : 11.0
+      avg background tokens          : 7.5
+      cached tokens (total, final)   : 3
+      avg merged tokens added/frame  : 4.0
+      avg merge factor  (bg→merged)  : 1.88x
+      cache K+V memory               : 0.221 MB
+    [temporal_model.backbone.blocks.3]
+      avg foreground tokens          : 10.7
+      avg background tokens          : 8.0
+      cached tokens (total, final)   : 3
+      avg merged tokens added/frame  : 4.3
+      avg merge factor  (bg→merged)  : 1.87x
+      cache K+V memory               : 0.221 MB
+
+=================
+  MATCHING PASS
+=================
+  Top-1 Accuracy              : 60.00%
+  Top-5 Accuracy              : 80.00%
+
+  FLOPs breakdown (matching pass, avg per video):
+    add_flops:    2.455e+08
+    bias_flops:   9.369e+08
+    linear_flops: 9.687e+11
+    matmul_flops: 2.243e+10
+
+  Matching algorithm FLOPs    : 5.0510e+09
+  KV FLOPs saved vs. baseline : 8.1224e+09
+  Net FLOPs savings           : 3.0714e+09
+
+  Per-block stats  (averaged over matching frames × videos):
+    [spatial_model.backbone.blocks.1]
+      avg tokens matched (bg reused)   : 116.2
+      avg cache entries used            : 75.9
+      avg final tokens (fg+bg+cached)  : 181.3
+    [spatial_model.backbone.blocks.2]
+      avg tokens matched (bg reused)   : 77.4
+      avg cache entries used            : 40.2
+      avg final tokens (fg+bg+cached)  : 108.9
+    [spatial_model.backbone.blocks.3]
+      avg tokens matched (bg reused)   : 43.6
+      avg cache entries used            : 33.1
+      avg final tokens (fg+bg+cached)  : 78.6
+    [spatial_model.backbone.blocks.4]
+      avg tokens matched (bg reused)   : 35.0
+      avg cache entries used            : 28.2
+      avg final tokens (fg+bg+cached)  : 61.8
+    [spatial_model.backbone.blocks.5]
+      avg tokens matched (bg reused)   : 31.9
+      avg cache entries used            : 25.4
+      avg final tokens (fg+bg+cached)  : 50.9
+    [spatial_model.backbone.blocks.6]
+      avg tokens matched (bg reused)   : 27.4
+      avg cache entries used            : 21.8
+      avg final tokens (fg+bg+cached)  : 44.4
+    [spatial_model.backbone.blocks.7]
+      avg tokens matched (bg reused)   : 23.9
+      avg cache entries used            : 19.2
+      avg final tokens (fg+bg+cached)  : 39.4
+    [spatial_model.backbone.blocks.8]
+      avg tokens matched (bg reused)   : 21.0
+      avg cache entries used            : 17.4
+      avg final tokens (fg+bg+cached)  : 36.7
+    [spatial_model.backbone.blocks.9]
+      avg tokens matched (bg reused)   : 18.9
+      avg cache entries used            : 15.9
+      avg final tokens (fg+bg+cached)  : 33.7
+    [spatial_model.backbone.blocks.10]
+      avg tokens matched (bg reused)   : 17.7
+      avg cache entries used            : 15.0
+      avg final tokens (fg+bg+cached)  : 31.4
+    [spatial_model.backbone.blocks.11]
+      avg tokens matched (bg reused)   : 16.4
+      avg cache entries used            : 13.2
+      avg final tokens (fg+bg+cached)  : 28.6
+    [temporal_model.backbone.blocks.1]
+      avg tokens matched (bg reused)   : 9.9
+      avg cache entries used            : 2.8
+      avg final tokens (fg+bg+cached)  : 12.8
+    [temporal_model.backbone.blocks.2]
+      avg tokens matched (bg reused)   : 2.7
+      avg cache entries used            : 1.9
+      avg final tokens (fg+bg+cached)  : 9.1
+    [temporal_model.backbone.blocks.3]
+      avg tokens matched (bg reused)   : 2.6
+      avg cache entries used            : 2.0
+      avg final tokens (fg+bg+cached)  : 7.6
+
+

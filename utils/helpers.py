@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.core.base import dict_csv_header, dict_csv_line, dict_string
-from src.tbkv.tbkv_blocks import TBKVBlock
 from src.utils.misc import (
     TopKAccuracy,
     get_device_description,
@@ -20,10 +19,12 @@ from src.utils.misc import (
 # ---------------------------------------------------------------------------
 
 def _collect_and_clear_block_stats(model):
-    """Snapshot _frame_stats from every TBKVBlock, then clear them."""
+    """Snapshot _frame_stats from TBKV-like blocks, then clear them."""
     out = {}
     for name, module in model.named_modules():
-        if isinstance(module, TBKVBlock):
+        # Avoid strict isinstance checks; class identity can differ if the same
+        # file is imported via multiple module paths.
+        if hasattr(module, "_frame_stats") and hasattr(module, "cache") and hasattr(module, "caching"):
             out[name] = list(getattr(module, "_frame_stats", []))
             module._frame_stats = []
     return out

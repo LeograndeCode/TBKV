@@ -4,9 +4,9 @@ model:
   spatial_config:
     block_config:
       use_tome: true
-      tome_r: 50   # fg tokens to merge per block during matching
+      tome_r_ratio: 0.1  # fraction of fg tokens to merge per block (0=off, 0.1=recommended)
   temporal_config:
     block_config:
       use_tome: true
-      tome_r: 10
+      tome_r_ratio: 0.1
 weights: "weights/vivit_b_kinetics400_final_24.pth"

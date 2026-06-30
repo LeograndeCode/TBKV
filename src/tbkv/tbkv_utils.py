@@ -13,15 +13,13 @@ def get_objective_score(score_attn):
     # Compute entropy over the attention distribution (last dimension)
     scores = (score_attn * torch.log(score_attn + 1e-6)).sum(dim=-1).unsqueeze(-1)
 
-    # foreground removal (normalize across tokens, not time)
+    # Normalize across tokens (not time) so larger values mean higher saliency.
     scores = scores - scores.amin(dim=-2, keepdim=True)
     scores = scores / (scores.amax(dim=-2, keepdim=True) + 1e-6)
-    score_mask = scores >= scores.mean(dim=-2, keepdim=True)
 
-    # background sharpening
+    # Recenter so background tends lower and foreground tends higher, while
+    # preserving rank information needed by top-k token selection.
     scores = scores - scores.mean(dim=-2, keepdim=True)
-    scores = scores / (scores.amax(dim=-2, keepdim=True) + 1e-6)
-    scores[score_mask] = 0.0
     return scores
 
 
@@ -94,12 +92,15 @@ def extract_bg_fg_tokens(x: torch.Tensor, attn: torch.Tensor) -> Tuple[torch.Ten
 
     scores = get_objective_score(attn).squeeze(-1) # [B, N]
 
-    # compute max bg/fg tokens count
+    # Foreground = higher saliency, background = lower saliency.
+    fg_mask = scores >= scores.mean(dim=-1, keepdim=True)
+    bg_mask = ~fg_mask
 
-    max_bg_tokens = (scores == 0).sum(dim=-1).max().item()
-    max_fg_tokens = (scores != 0).sum(dim=-1).max().item()
+    # Compute max bg/fg token counts across the batch.
+    max_bg_tokens = bg_mask.sum(dim=-1).max().item()
+    max_fg_tokens = fg_mask.sum(dim=-1).max().item()
 
-    # Get bg and foreground indicies following topk approach
+    # Get background and foreground indices via top-k saliency ranking.
     # Basically we allow some "usure foreground" tokes to be 
     # considered as background to have fixed size tensors and viceversa
     # This mechanism additionally allows to handle an error margins in the saliency map

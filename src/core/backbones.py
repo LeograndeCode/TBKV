@@ -1,4 +1,6 @@
 import torch.nn as nn
+import sys
+from pathlib import Path
 
 from src.core import blocks
 from src.core.base import ExtendedModule
@@ -13,6 +15,20 @@ def _resolve_block_class(block_class_name):
     if block_class_name == "EVITBlock":
         from src.evit.blocks import EVITBlock
         return EVITBlock
+    if block_class_name == "EventfulBlock":
+        # Eventful blocks live in the nested eventful-transformer package.
+        try:
+            from eventful_transformer.blocks import EventfulBlock
+            return EventfulBlock
+        except ModuleNotFoundError:
+            repo_root = Path(__file__).resolve().parents[2]
+            eventful_root = repo_root / "eventful-transformer"
+            if eventful_root.exists():
+                eventful_root_str = str(eventful_root)
+                if eventful_root_str not in sys.path:
+                    sys.path.insert(0, eventful_root_str)
+                from eventful_transformer.blocks import EventfulBlock
+                return EventfulBlock
     raise AttributeError(f"module 'src.core.blocks' has no attribute '{block_class_name}'")
 
 

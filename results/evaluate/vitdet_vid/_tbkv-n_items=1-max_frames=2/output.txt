@@ -1,0 +1,47 @@
+Evaluation
+Quadro RTX 6000
+Metrics
+    map:               0.2153
+    map_50:            0.505
+    map_75:            0.1287
+    map_large:         0.2525
+    map_medium:        0.2525
+    map_per_class:     -1
+    map_small:         -1
+    mar_1:             0.15
+    mar_10:            0.2125
+    mar_100:           0.2125
+    mar_100_per_class: -1
+    mar_large:         0.25
+    mar_medium:        0.25
+    mar_small:         -1
+Counts
+    add_flops:    2.206e+08
+    bias_flops:   1.409e+08
+    einsum_flops: 3.983e+08
+    linear_flops: 1.456e+11
+    matmul_flops: 3.824e+10
+
+Evaluation
+Quadro RTX 6000
+Metrics
+    map:               0.1897
+    map_50:            0.5
+    map_75:            0.1262
+    map_large:         0.2092
+    map_medium:        0.3677
+    map_per_class:     -1
+    map_small:         -1
+    mar_1:             0.125
+    mar_10:            0.225
+    mar_100:           0.2375
+    mar_100_per_class: -1
+    mar_large:         0.225
+    mar_medium:        0.5
+    mar_small:         -1
+Counts
+    add_flops:    3.387e+07
+    bias_flops:   1.474e+08
+    linear_flops: 1.507e+11
+    matmul_flops: 5.735e+10
+

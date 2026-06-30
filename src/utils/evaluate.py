@@ -48,8 +48,6 @@ def evaluate_vivit_metrics(device, model, data, config):
             break
 
         model.reset()
-        # For fair comparison: use the matching-phase frames (skip first 16)
-        video = video[:, 16:, :, :, :]
 
         with torch.inference_mode():
             output = model(video.to(device))

@@ -4,6 +4,8 @@ from detectron2.structures import ImageList
 from torchvision.transforms import Normalize
 
 from src.tbkv.tbkv_backbone import TBKVViTBackbone
+from src.tbkv.tbkv_blocks import TBKVBlock
+from src.tbkv.cache import Cache
 from src.core.base import ExtendedModule, numeric_tuple
 from src.core.blocks import LN_EPS
 from src.utils.image import as_float32, pad_to_size
@@ -185,9 +187,88 @@ class TBKVViTDet(ExtendedModule):
 
     def forward(self, x):
         images, x = self.pre_backbone(x)
-        x = self.backbone(x)
+        x = self._forward_backbone_no_reset(x)
         results = self.post_backbone(images, x)
         return results
+
+    def set_mode(self, mode):
+        caching = (mode == "caching")
+        for module in self.backbone.modules():
+            if isinstance(module, TBKVBlock):
+                module.caching = caching
+
+    def _qkv_from_norm(self, block, x_norm):
+        b, n, c = x_norm.shape
+        head_dim = c // block.heads
+        q = block.q(x_norm).reshape(b, n, block.heads, head_dim).permute(0, 2, 1, 3)
+        k = block.k(x_norm).reshape(b, n, block.heads, head_dim).permute(0, 2, 1, 3)
+        v = block.v(x_norm).reshape(b, n, block.heads, head_dim).permute(0, 2, 1, 3)
+        return q, k, v
+
+    def _forward_tbkv_block_vitdet(self, block, x, prev_scores):
+        skip_1 = x
+        x_norm = block.input_layer_norm(x)
+        b, n, c = x_norm.shape
+
+        # Caching (or cold start): compute full q/k/v and refresh cache.
+        if block.caching or block.cache is None or prev_scores is None:
+            q, k, v = self._qkv_from_norm(block, x_norm)
+            block.cache = Cache(k.detach(), v.detach(), x_norm.detach())
+        else:
+            # Matching mode with fixed token count: reuse cached K/V for matched positions,
+            # recompute K/V only for unmatched positions.
+            cache_tokens = block.cache.tokens
+            x_n = x_norm / (x_norm.norm(dim=-1, keepdim=True) + 1e-6)
+            c_n = cache_tokens / (cache_tokens.norm(dim=-1, keepdim=True) + 1e-6)
+            sim = (x_n * c_n).sum(dim=-1)
+
+            n_match = max(0, min(n, int(n * block.r_match)))
+            sort_idx = sim.argsort(dim=-1, descending=True)
+            idx_match = sort_idx[:, :n_match]
+            idx_unmatch = sort_idx[:, n_match:]
+
+            q, _, _ = self._qkv_from_norm(block, x_norm)
+            k = block.cache.K.clone()
+            v = block.cache.V.clone()
+
+            n_unmatch = idx_unmatch.shape[1]
+            if n_unmatch > 0:
+                gather_idx = idx_unmatch.unsqueeze(-1).expand(-1, -1, c)
+                x_unmatch = x_norm.gather(1, gather_idx)
+                _, k_unmatch, v_unmatch = self._qkv_from_norm(block, x_unmatch)
+
+                head_dim = c // block.heads
+                scatter_idx = idx_unmatch.unsqueeze(1).unsqueeze(-1).expand(-1, block.heads, -1, head_dim)
+                k = k.scatter(2, scatter_idx, k_unmatch)
+                v = v.scatter(2, scatter_idx, v_unmatch)
+
+            # Keep cache refreshed with most recent tokens/kv.
+            block.cache = Cache(k.detach(), v.detach(), x_norm.detach())
+
+        attn = block.matmul(q / block.scale, k.transpose(-2, -1))
+        attn = attn.softmax(dim=-1)
+
+        x = block.matmul(attn, v)
+        x = block._recombine_heads(x)
+
+        x = block.projection(x)
+        x = block.add(block.drop_path(x), skip_1)
+
+        skip_2 = x
+        x = block.mlp_layer_norm(x)
+        x = block._forward_mlp(x)
+        x = block.add(block.drop_path(x), skip_2)
+
+        # Use mean attention as next-block saliency signal.
+        return x, attn.mean(dim=1)
+
+    def _forward_backbone_no_reset(self, x):
+        # ViTDet evaluates frame-by-frame; keep TBKV cache/mode state across frames.
+        x = self.backbone.position_encoding(x)
+        prev_scores = None
+        for block in self.backbone.blocks:
+            x, prev_scores = self._forward_tbkv_block_vitdet(block, x, prev_scores)
+        return x
 
     def post_backbone(self, images, x):
         """

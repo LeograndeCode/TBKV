@@ -22,3 +22,11 @@ add_flops,bias_flops,linear_flops,matmul_flops
 5.12757e+08,2.01353e+09,2.10344e+12,6.98938e+10
 add_flops,bias_flops,linear_flops,matmul_flops
 5.13388e+08,2.01605e+09,2.10611e+12,7.00812e+10
+add_flops,bias_flops,linear_flops,matmul_flops
+4.11265e+08,1.61989e+09,1.68421e+12,4.64954e+10
+add_flops,bias_flops,linear_flops,matmul_flops
+4.11212e+08,1.6198e+09,1.68408e+12,4.64764e+10
+add_flops,bias_flops,linear_flops,matmul_flops
+4.12236e+08,1.62396e+09,1.68845e+12,4.6644e+10
+add_flops,bias_flops,linear_flops,matmul_flops
+4.11972e+08,1.62299e+09,1.6874e+12,4.6629e+10

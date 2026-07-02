@@ -118,7 +118,10 @@ def _print_caching_stats(avg_counts, block_stats, n_cache_frames, tee_file):
 
 
 def _print_matching_stats(avg_counts, block_stats, top1, top5,
-                          total_saved_kv, total_match_overhead, tee_file):
+                          total_saved_kv, total_match_overhead,
+                          avg_matching_frames, kv_saved_per_frame,
+                          matching_cost_per_frame, net_saved_per_frame,
+                          tee_file):
     _print_section("MATCHING PASS", tee_file)
     tee_print(f"  Top-1 Accuracy              : {top1 * 100:.2f}%", tee_file)
     tee_print(f"  Top-5 Accuracy              : {top5 * 100:.2f}%", tee_file)
@@ -129,6 +132,13 @@ def _print_matching_stats(avg_counts, block_stats, top1, top5,
     tee_print(f"  Matching algorithm FLOPs    : {total_match_overhead:.4e}", tee_file)
     tee_print(f"  KV FLOPs saved vs. baseline : {total_saved_kv:.4e}", tee_file)
     tee_print(f"  Net FLOPs savings           : {total_saved_kv - total_match_overhead:.4e}", tee_file)
+    tee_print("", tee_file)
+    tee_print("  Per-frame projection terms (matching pass):", tee_file)
+    tee_print(f"    avg matching frames/video : {avg_matching_frames:.2f}", tee_file)
+    tee_print(f"    KV FLOPs saved / frame    : {kv_saved_per_frame:.4e}", tee_file)
+    tee_print(f"    matching cost FLOPs/frame : {matching_cost_per_frame:.4e}", tee_file)
+    tee_print(f"    net FLOPs savings / frame : {net_saved_per_frame:.4e}", tee_file)
+    tee_print("    projection formula         : net_saved(F) = F * net_saved_per_frame", tee_file)
     tee_print("", tee_file)
     tee_print("  Per-block stats  (averaged over matching frames × videos):", tee_file)
     for bname, s in block_stats.items():

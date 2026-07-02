@@ -116,7 +116,8 @@ def extract_bg_fg_tokens(x: torch.Tensor, attn: torch.Tensor) -> Tuple[torch.Ten
 
 
     
-def compute_merge( x: torch.Tensor, local_merge_ratio: float) -> Tuple[Callable, ...]:
+def compute_merge( x: torch.Tensor, merging_iterations: float) -> Tuple[Callable, ...]:
+    
     """
     Token merging for VideoMAE.
     Same as timm_TBKV but adapted for VideoMAE's architecture.
@@ -130,10 +131,36 @@ def compute_merge( x: torch.Tensor, local_merge_ratio: float) -> Tuple[Callable,
 
     # Apply bipartite soft matching
 
-    m, u = bipartite_soft_matching(x, local_merge_ratio, class_token=False, distill_token=False)
+    # Fixed merge ratio to maximum
+    local_merge_ratio = 0.5
+
+    merged_tokens = x
+    m_seq = []
+    u_seq = []
+    for _ in range(merging_iterations):
+        m_i, u_i = bipartite_soft_matching(
+            merged_tokens,
+            local_merge_ratio,
+            class_token=False,
+            distill_token=False,
+        )
+        m_seq.append(m_i)
+        u_seq.append(u_i)
+        merged_tokens = m_i(merged_tokens)
+
+    def m(tokens: torch.Tensor) -> torch.Tensor:
+        out = tokens
+        for m_i in m_seq:
+            out = m_i(out)
+        return out
+
+    def u(tokens: torch.Tensor) -> torch.Tensor:
+        out = tokens
+        for u_i in reversed(u_seq):
+            out = u_i(out)
+        return out
 
     original_tokens = x
-    merged_tokens = m(x)
 
     #Debug
 

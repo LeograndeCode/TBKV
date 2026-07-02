@@ -16,18 +16,6 @@ try:
 except ImportError:
     _TOME_AVAILABLE = False
 
-    # Fallback implementations so tbkv_tome works even without external ToMe package.
-    def merge_source(merge, x, source):
-        return source
-
-    def merge_wavg(merge, x, size=None):
-        if size is None:
-            size = torch.ones(x.shape[0], x.shape[1], 1, device=x.device, dtype=x.dtype)
-        x = merge(x * size, mode="sum")
-        size = merge(size, mode="sum")
-        x = x / (size + 1e-6)
-        return x, size
-
 
 def mps_gather_workaround(input, dim, index):
     # MPS gather workaround: move to CPU, gather, move back
@@ -50,6 +38,7 @@ def perform_tbkv_matching(
     v_proj,
     num_heads: int,
     r_match: float,
+    split_tokens: bool,
     device: torch.device
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], dict]:
     """
@@ -78,8 +67,12 @@ def perform_tbkv_matching(
     
     gather = mps_gather_workaround if device.type == "mps" else torch.gather
     
-    # Extract background and foreground tokens based on attention map
-    x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, old_attn)  # [B, N_bg, C], [B, N_fg, C]
+    # Either split tokens by saliency, or run TBKV on all tokens.
+    if split_tokens:
+        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, old_attn)  # [B, N_bg, C], [B, N_fg, C]
+    else:
+        x_bg = x
+        x_fg = x[:, :0, :]
 
     # Apply matching algorithm on background tokens only
     k_matched, v_matched, matched_cache_tokens, idx_matched, idx_unmatched = cache.match_tokens(
@@ -93,7 +86,11 @@ def perform_tbkv_matching(
 
     # For residual connection, we need unnormalized version
     if x_unnorm is not None:
-        x_bg_unnorm, x_fg_unnorm, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+        if split_tokens:
+            x_bg_unnorm, x_fg_unnorm, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+        else:
+            x_bg_unnorm = x_unnorm
+            x_fg_unnorm = x_unnorm[:, :0, :]
         unm_bg_tokens_unnorm = gather(x_bg_unnorm, dim=-2, index=idx_unmatched.unsqueeze(-1).expand(-1, -1, C))
         new_tokens = torch.cat([matched_cache_tokens, unm_bg_tokens_unnorm, x_fg_unnorm], dim=-2)
     else:
@@ -134,6 +131,7 @@ def perform_tbkv_matching_with_tome(
     v_proj,
     num_heads: int,
     r_match: float,
+    split_tokens: bool,
     device: torch.device,
     _tome_info: dict,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], dict]:
@@ -164,8 +162,12 @@ def perform_tbkv_matching_with_tome(
     
     gather = mps_gather_workaround if device.type == "mps" else torch.gather
     
-    # Extract background and foreground tokens based on attention map
-    x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, old_attn)  # [B, N_bg, C], [B, N_fg, C]
+    # Either split tokens by saliency, or run TBKV on all tokens.
+    if split_tokens:
+        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, old_attn)  # [B, N_bg, C], [B, N_fg, C]
+    else:
+        x_bg = x
+        x_fg = x[:, :0, :]
 
     # Apply ToMe on foreground tokens to further reduce them
     # Compute K projection for foreground tokens to use as metric (similar to tome/patch/timm.py)
@@ -194,14 +196,20 @@ def perform_tbkv_matching_with_tome(
         
         # Also apply the same merging to unnormalized foreground tokens if available
         if x_unnorm is not None:
-            _, x_fg_unnorm, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+            if split_tokens:
+                _, x_fg_unnorm, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+            else:
+                x_fg_unnorm = x_unnorm[:, :0, :]
             x_fg_unnorm_reduced, _ = merge_wavg(merge, x_fg_unnorm, size=None)
         else:
             x_fg_unnorm_reduced = x_fg_reduced
     else:
         # No ToMe reduction - use original foreground tokens
         if x_unnorm is not None:
-            _, x_fg_unnorm, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+            if split_tokens:
+                _, x_fg_unnorm, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+            else:
+                x_fg_unnorm = x_unnorm[:, :0, :]
             x_fg_unnorm_reduced = x_fg_unnorm
         else:
             x_fg_unnorm_reduced = x_fg_reduced
@@ -221,7 +229,10 @@ def perform_tbkv_matching_with_tome(
     # For residual connection, we need unnormalized version
     # Apply same merging to unnormalized tokens to maintain consistency
     if x_unnorm is not None:
-        x_bg_unnorm, _, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+        if split_tokens:
+            x_bg_unnorm, _, _, _ = extract_bg_fg_tokens(x_unnorm, old_attn)
+        else:
+            x_bg_unnorm = x_unnorm
         unm_bg_tokens_unnorm = gather(x_bg_unnorm, dim=-2, index=idx_unmatched.unsqueeze(-1).expand(-1, -1, C))
         # Use the reduced unnormalized foreground tokens (same merging applied)
         new_tokens = torch.cat([matched_cache_tokens, unm_bg_tokens_unnorm, x_fg_unnorm_reduced], dim=-2)

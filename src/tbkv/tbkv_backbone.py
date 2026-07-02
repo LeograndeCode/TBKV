@@ -14,7 +14,7 @@ class TBKVViTBackbone(ViTBackbone):
     def __init__(self, block_config, depth, position_encoding_size, input_size,
                  has_class_token=False, window_indices=(), windowed_class=None,
                  windowed_overrides=None, block_class="Block", **kwargs):
-        _tbkv_keys = ("local_merge_ratio", "r_match", "caching", "raw", "use_tome", "tome_r", "tome_r_ratio")
+        _tbkv_keys = ("local_merge_ratio", "merging_iterations", "r_match", "caching", "raw", "use_tome", "tome_r", "split_tokens")
         tbkv_config = {k: block_config.pop(k) for k in _tbkv_keys if k in block_config}
         super().__init__(
             block_config=block_config,
@@ -45,7 +45,5 @@ class TBKVViTBackbone(ViTBackbone):
         prev_attnmap = None
         for block in self.blocks:
             x, prev_attnmap = block(x, prev_attnmap) 
-        # Keep TBKV block state across forwards so the evaluation loop can
-        # do an explicit caching pass followed by a matching pass.
-        # Per-video cleanup is handled by model.reset()/model.clear_cache().
+        # Keep per-block cache state across forwards so caching pass feeds matching pass.
         return x

@@ -1,0 +1,36 @@
+Evaluation
+Quadro RTX 6000
+
+Videos evaluated: 1
+
+================
+  CACHING PASS
+================
+  Frames used for caching : 16
+  FLOPs breakdown (caching mechanism, avg per video):
+    add_flops:    1.819e+08
+    bias_flops:   7.857e+08
+    linear_flops: 8.046e+11
+    matmul_flops: 3.434e+10
+
+  Per-block stats  (averaged over caching frames × videos):
+
+=================
+  MATCHING PASS
+=================
+  Top-1 Accuracy              : 100.00%
+  Top-5 Accuracy              : 100.00%
+
+  FLOPs breakdown (matching pass, avg per video):
+    add_flops:    1.819e+08
+    bias_flops:   7.857e+08
+    linear_flops: 8.046e+11
+    matmul_flops: 3.434e+10
+
+  Matching algorithm FLOPs    : 0.0000e+00
+  KV FLOPs saved vs. baseline : 0.0000e+00
+  Net FLOPs savings           : 0.0000e+00
+
+  Per-block stats  (averaged over matching frames × videos):
+
+

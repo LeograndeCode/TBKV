@@ -124,12 +124,12 @@ TBKV/
 │   │   ├── epic_kitchens.py
 │   │   └── vid.py
 │   └── utils/
-│       ├── evaluate.py        # Vanilla evaluation loop
+│       ├── evaluate.py        # Vanilla + TBKV evaluation loop
 │       ├── evaluate_tbkv.py   # TBKV evaluation loop (legacy)
 │       ├── config.py          # OmegaConf config loading
 │       └── misc.py            # TopKAccuracy, tee_print, etc.
 ├── utils/
-│   └── test_evaluate.py   # New evaluation framework with detailed stats
+│   └── evaluate.py           # Evaluation entrypoint used by scripts/evaluate/tbkv_vivit_kinetics400.py
 ├── weights/               # Pre-trained weights (place here)
 ├── data/                  # Datasets (auto-downloaded where possible)
 └── results/               # Evaluation outputs
@@ -175,7 +175,7 @@ Manual download required. Place `vid_data.tar` from [here](https://drive.google.
 
 ### TBKV ViViT on Kinetics-400
 
-The main evaluation script is `scripts/evaluate/tbkv_vivit_kinetics400.py`. It uses `utils/test_evaluate.py` which implements the full two-pass TBKV evaluation with detailed per-block statistics.
+The main evaluation script is `scripts/evaluate/tbkv_vivit_kinetics400.py`. It uses `utils/evaluate.py`, which implements the full two-pass TBKV evaluation with detailed per-block statistics.
 
 #### Run TBKV evaluation
 

@@ -1,25 +1,24 @@
 
 import torch
 import torch.nn as nn
-from math import sqrt
-from typing import Any, Callable, Dict, Optional, Tuple
-import sys
-import os
-import importlib.util
-from src.core.base import ExtendedModule
-from src.core.blocks import LN_EPS, Block
-from src.core.counting import CountedAdd, CountedLinear, CountedMatmul
-from src.core.blocks import Block
+
 from src.tbkv.tbkv_utils import compute_merge, extract_bg_fg_tokens
 from src.tbkv.cache import Cache
 from src.tbkv.match import perform_tbkv_matching, perform_tbkv_matching_with_tome
+from src.core.blocks import Block
+from src.core.counting import CountedLinear
 
 
-def merging(x, attn_map, k, v, local_merge_ratio):
+def merging(x, attn_map, k, v, merging_iterations, split_tokens=True):
     B, N, C = x.shape
     
-    # Extract background and foreground tokens based on attention map
-    x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map)
+    # Either split tokens by saliency, or treat all tokens as cacheable.
+    if split_tokens:
+        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map)
+    else:
+        x_bg = x
+        x_fg = x[:, :0, :]
+        idx_bg = torch.arange(N, device=x.device).unsqueeze(0).expand(B, -1)
     
     # x_bg: [B, max_bg_tokens, C], idx_bg: [B, max_bg_tokens]
     max_bg_tokens = x_bg.shape[1]
@@ -41,7 +40,7 @@ def merging(x, attn_map, k, v, local_merge_ratio):
     v_bg_flat = v_bg.transpose(1, 2).reshape(B, max_bg_tokens, num_heads * head_dim)
     
     # Merge background tokens
-    m, u, merged_x_bg = compute_merge(x_bg, local_merge_ratio)
+    m, u, merged_x_bg = compute_merge(x_bg, merging_iterations)
     k_merged_flat = m(k_bg_flat)  # [B, merged_tokens, num_heads*head_dim]
     v_merged_flat = m(v_bg_flat)  # [B, merged_tokens, num_heads*head_dim]
     
@@ -58,35 +57,31 @@ def merging(x, attn_map, k, v, local_merge_ratio):
 
 class TBKVBlock(Block):
 
-    def __init__(self, local_merge_ratio: float = 0.5, r_match: float = 0.75, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, tome_r_ratio: float = 0.0, **super_kwargs):
+    def __init__(self, local_merge_ratio: float = 0.5, merging_iterations: int = 1, r_match: float = 0.75, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, split_tokens: bool = True, **super_kwargs):
 
         super().__init__(**super_kwargs)
 
         self.r_match = r_match
         self.local_merge_ratio = local_merge_ratio
+        self.merging_iterations = merging_iterations
         self.caching = caching
         self._initial_caching = caching
         self.has_class_token = has_class_token
         self.raw = raw
         self.use_tome = use_tome
         self.tome_r = tome_r
-        self.tome_r_ratio = tome_r_ratio
+        self.split_tokens = split_tokens
         self.cache = None  
         self.prev_attn_map = None
-
-        # Split QKV so that Block has attributes q, k and v
 
         qkv: nn.Linear = self.qkv
         dim = qkv.in_features
         all_head_dim = qkv.out_features // 3
         device = qkv.weight.device
         dtype = qkv.weight.dtype
-        
 
-        # Split weights into q, k, v chunks
         w_q, w_k, w_v = qkv.weight.data.chunk(3, dim=0)
-        
-        
+
         def build_linear(w, b=None):
             lin = CountedLinear(dim, all_head_dim, device=device, dtype=dtype)
             lin.weight.data.copy_(w)
@@ -100,6 +95,152 @@ class TBKVBlock(Block):
         # dim saved for FLOPs accounting
         self._dim = dim
         self._head_dim = all_head_dim
+
+    def _record_frame_stats(self, stats):
+        if not hasattr(self, '_frame_stats'):
+            self._frame_stats = []
+        self._frame_stats.append(stats)
+
+    def _append_cache(self, k_new, v_new, tok_new):
+        if self.cache is None:
+            self.cache = Cache(k_new, v_new, tok_new)
+        else:
+            self.cache = Cache(
+                torch.cat([self.cache.K, k_new], dim=2),
+                torch.cat([self.cache.V, v_new], dim=2),
+                torch.cat([self.cache.tokens, tok_new], dim=1),
+            )
+
+    def _cache_size_mb(self):
+        return (self.cache.K.numel() * self.cache.K.element_size() * 2) / 1e6
+
+    def _split_matching_inputs(self, x, skip_1, prev_attnmap):
+        if self.has_class_token:
+            cls_x_norm = x[:, :1, :]
+            cls_x_unnorm = skip_1[:, :1, :]
+            patch_x_norm = x[:, 1:, :]
+            patch_x_unnorm = skip_1[:, 1:, :]
+            patch_attnmap = prev_attnmap[:, :, 1:, 1:]
+        else:
+            cls_x_norm = cls_x_unnorm = None
+            patch_x_norm = x
+            patch_x_unnorm = skip_1
+            patch_attnmap = prev_attnmap
+
+        return cls_x_norm, cls_x_unnorm, patch_x_norm, patch_x_unnorm, patch_attnmap
+
+    def _prepend_class_token(self, q, k, v, new_tokens, cls_x_norm, cls_x_unnorm):
+        b_size = q.shape[0]
+        head_dim = cls_x_norm.shape[-1] // self.heads
+        cls_q = self.q(cls_x_norm).reshape(b_size, 1, self.heads, head_dim).permute(0, 2, 1, 3)
+        cls_k = self.k(cls_x_norm).reshape(b_size, 1, self.heads, head_dim).permute(0, 2, 1, 3)
+        cls_v = self.v(cls_x_norm).reshape(b_size, 1, self.heads, head_dim).permute(0, 2, 1, 3)
+        q = torch.cat([cls_q, q], dim=2)
+        k = torch.cat([cls_k, k], dim=2)
+        v = torch.cat([cls_v, v], dim=2)
+        skip_1 = torch.cat([cls_x_unnorm, new_tokens], dim=1)
+        return q, k, v, skip_1
+
+    def _forward_matching(self, x, skip_1, prev_attnmap):
+        self._match_calls = getattr(self, '_match_calls', 0) + 1
+        prev_attnmap = prev_attnmap.to(x.device)
+
+        cls_x_norm, cls_x_unnorm, patch_x_norm, patch_x_unnorm, patch_attnmap = self._split_matching_inputs(
+            x, skip_1, prev_attnmap
+        )
+
+        if self.split_tokens:
+            x_bg, x_fg, _, _ = extract_bg_fg_tokens(patch_x_norm, patch_attnmap)
+        else:
+            x_bg = patch_x_norm
+            x_fg = patch_x_norm[:, :0, :]
+
+        if self.use_tome:
+            tome_info = {
+                "r": [self.tome_r],
+                "class_token": self.has_class_token,
+                "distill_token": False,
+                "trace_source": False,
+                "source": None,
+            }
+            q, k, v, new_tokens, flop_info = perform_tbkv_matching_with_tome(
+                x_unnorm=patch_x_unnorm,
+                x=patch_x_norm,
+                old_attn=patch_attnmap,
+                cache=self.cache,
+                q_proj=self.q,
+                k_proj=self.k,
+                v_proj=self.v,
+                num_heads=self.heads,
+                r_match=self.r_match,
+                split_tokens=self.split_tokens,
+                device=x.device,
+                _tome_info=tome_info,
+            )
+        else:
+            q, k, v, new_tokens, flop_info = perform_tbkv_matching(
+                x_unnorm=patch_x_unnorm,
+                x=patch_x_norm,
+                old_attn=patch_attnmap,
+                cache=self.cache,
+                q_proj=self.q,
+                k_proj=self.k,
+                v_proj=self.v,
+                num_heads=self.heads,
+                r_match=self.r_match,
+                split_tokens=self.split_tokens,
+                device=x.device,
+            )
+
+        n_unique_cache = int(flop_info['n_matched_tokens'])
+        n_bg_matched = int(x_bg.shape[1]) - int(flop_info['n_unmatched_tokens'])
+        cache_size = int(self.cache.tokens.shape[1])
+        saved_kv_flops = int(n_bg_matched * self._dim * self._head_dim * 2)
+        match_overhead_flops = int(x_bg.shape[1] * cache_size * self._dim)
+        cache_kv_read_bytes = int(
+            n_unique_cache
+            * self.heads
+            * (self._head_dim // self.heads)
+            * self.cache.K.element_size()
+            * 2
+        )
+        self._record_frame_stats({
+            'phase': 'matching',
+            'n_bg': int(x_bg.shape[1]),
+            'n_fg': int(x_fg.shape[1]),
+            'n_bg_matched': n_bg_matched,
+            'n_bg_unmatched': int(flop_info['n_unmatched_tokens']),
+            'n_unique_cache_used': n_unique_cache,
+            'cache_size': cache_size,
+            'n_q': int(flop_info['n_q_tokens']),
+            'n_kv': int(flop_info['n_kv_tokens']),
+            'saved_kv_linear_flops': saved_kv_flops,
+            'matching_overhead_flops': match_overhead_flops,
+            'cache_kv_read_bytes': cache_kv_read_bytes,
+        })
+
+        if self.has_class_token:
+            q, k, v, skip_1 = self._prepend_class_token(q, k, v, new_tokens, cls_x_norm, cls_x_unnorm)
+        else:
+            skip_1 = new_tokens
+
+        b_size = q.shape[0]
+        n_q = q.shape[2]
+        attn = self.matmul(q / self.scale, k.transpose(-2, -1))
+        attn = attn.softmax(dim=-1)
+        self.prev_attn_map = attn.detach().cpu()
+
+        x = self.matmul(attn, v)
+        x = x.permute(0, 2, 1, 3).reshape(b_size, n_q, -1)
+        x = self.projection(x)
+        x = self.add(self.drop_path(x), skip_1)
+
+        skip_2 = x
+        x = self.mlp_layer_norm(x)
+        x = self._forward_mlp(x)
+        x = self.add(self.drop_path(x), skip_2)
+
+        return x, self.prev_attn_map
 
     def reset_self(self):
         super().reset_self()
@@ -148,143 +289,8 @@ class TBKVBlock(Block):
         skip_1 = x
         x = self.input_layer_norm(x)
 
-        ### TBKV PATCH - matching mode: bypass qkv + _forward_attention with cross-attention
-
-        if self.caching == False and prev_attnmap is not None and self.cache is not None:
-            self._match_calls = getattr(self, '_match_calls', 0) + 1
-            prev_attnmap = prev_attnmap.to(x.device)
-
-            # Separate class token (position 0) from patch tokens so it is
-            # never scrambled by the bg/fg reordering in the matching path.
-            if self.has_class_token:
-                cls_x_norm   = x[:, :1, :]        # [B, 1, C] - layer-normed
-                cls_x_unnorm = skip_1[:, :1, :]   # [B, 1, C] - original (for residual)
-                patch_x_norm   = x[:, 1:, :]
-                patch_x_unnorm = skip_1[:, 1:, :]
-                # Slice attention to patch-to-patch submatrix
-                patch_attnmap = prev_attnmap[:, :, 1:, 1:]
-            else:
-                cls_x_norm = cls_x_unnorm = None
-                patch_x_norm   = x
-                patch_x_unnorm = skip_1
-                patch_attnmap  = prev_attnmap
-
-            x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(patch_x_norm, patch_attnmap)
-
-
-
-            # q: [B,H,N_q,hd]  k,v: [B,H,N_kv,hd]  new_tokens: [B,N_q,C]
-            if self.use_tome:
-                # bipartite_soft_matching treats r as a ratio (multiplies by n_tokens
-                # internally), so pass tome_r_ratio directly.
-                # tome_r (int) is legacy and should not be used with ratio mode.
-                effective_r = self.tome_r_ratio if self.tome_r_ratio > 0.0 else self.tome_r
-                _tome_info = {
-                    "r":             [effective_r],
-                    "class_token":   self.has_class_token,
-                    "distill_token": False,
-                    "trace_source":  False,
-                    "source":        None,
-                }
-                q, k, v, new_tokens, flop_info = perform_tbkv_matching_with_tome(
-                    x_unnorm=patch_x_unnorm,
-                    x=patch_x_norm,
-                    old_attn=patch_attnmap,
-                    cache=self.cache,
-                    q_proj=self.q,
-                    k_proj=self.k,
-                    v_proj=self.v,
-                    num_heads=self.heads,
-                    r_match=self.r_match,
-                    device=x.device,
-                    _tome_info=_tome_info,
-                )
-            else:
-                q, k, v, new_tokens, flop_info = perform_tbkv_matching(
-                    x_unnorm=patch_x_unnorm,
-                    x=patch_x_norm,
-                    old_attn=patch_attnmap,
-                    cache=self.cache,
-                    q_proj=self.q,
-                    k_proj=self.k,
-                    v_proj=self.v,
-                    num_heads=self.heads,
-                    r_match=self.r_match,
-                    device=x.device,
-                )
-
-            # --- record matching-phase stats ---
-            n_unique_cache = int(flop_info['n_matched_tokens'])   # unique cache K/V entries retrieved
-            n_bg_matched   = int(x_bg.shape[1]) - int(flop_info['n_unmatched_tokens'])  # bg tokens whose K/V was reused
-            cache_size     = int(self.cache.tokens.shape[1])
-            # FLOPs saved: skipped k_proj + v_proj for n_bg_matched tokens
-            #   CountedLinear counts: x.numel() * out_features = (B*N) * in_dim * out_dim
-            #   Here B=1, so saved = n_bg_matched * _dim * _head_dim * 2  (K + V)
-            saved_kv_flops = int(n_bg_matched * self._dim * self._head_dim * 2)
-            # Matching overhead: cosine-sim matmul [B, N_bg, C] x [B, C, N_cache]
-            #   result shape [B, N_bg, N_cache], flops = N_bg * N_cache * C
-            match_overhead_flops = int(x_bg.shape[1] * cache_size * self._dim)
-            if not hasattr(self, '_frame_stats'):
-                self._frame_stats = []
-            # Memory read when pulling n_unique_cache_used rows of K and V
-            # from the cache: each row is [H, head_dim], dtype same as cache
-            _elem_bytes = self.cache.K.element_size()
-            cache_kv_read_bytes = int(n_unique_cache * self.heads * (self._head_dim // self.heads) * _elem_bytes * 2)
-            self._frame_stats.append({
-                'phase':                   'matching',
-                'n_bg':                    int(x_bg.shape[1]),
-                'n_fg':                    int(x_fg.shape[1]),
-                'n_bg_matched':            n_bg_matched,
-                'n_bg_unmatched':          int(flop_info['n_unmatched_tokens']),
-                'n_unique_cache_used':     n_unique_cache,
-                'cache_size':              cache_size,
-                'n_q':                     int(flop_info['n_q_tokens']),
-                'n_kv':                    int(flop_info['n_kv_tokens']),
-                'saved_kv_linear_flops':   saved_kv_flops,
-                'matching_overhead_flops': match_overhead_flops,
-                'cache_kv_read_bytes':     cache_kv_read_bytes,
-            })
-            # --- end stats ---
-
-            if self.has_class_token:
-                # Compute Q/K/V for the class token and prepend to patch tensors
-                B_m = q.shape[0]
-                head_dim = cls_x_norm.shape[-1] // self.heads
-                cls_q = self.q(cls_x_norm).reshape(B_m, 1, self.heads, head_dim).permute(0, 2, 1, 3)
-                cls_k = self.k(cls_x_norm).reshape(B_m, 1, self.heads, head_dim).permute(0, 2, 1, 3)
-                cls_v = self.v(cls_x_norm).reshape(B_m, 1, self.heads, head_dim).permute(0, 2, 1, 3)
-                q = torch.cat([cls_q, q], dim=2)   # [B, H, 1+N_q_patch, hd]
-                k = torch.cat([cls_k, k], dim=2)   # [B, H, 1+N_kv,       hd]
-                v = torch.cat([cls_v, v], dim=2)
-                # Residual: class token at 0, then patch new_tokens
-                skip_1 = torch.cat([cls_x_unnorm, new_tokens], dim=1)
-            else:
-                skip_1 = new_tokens
-
-            B_m = q.shape[0]
-            N_q = q.shape[2]
-
-            # Cross-attention: q over merged token set, k/v over cache+new
-            attn = self.matmul(q / self.scale, k.transpose(-2, -1))   # [B,H,N_q,N_kv]
-            attn = attn.softmax(dim=-1)
-            self.prev_attn_map = attn.detach().cpu()
-
-            x = self.matmul(attn, v)                                   # [B,H,N_q,hd]
-            x = x.permute(0, 2, 1, 3).reshape(B_m, N_q, -1)           # [B,N_q,C]
-
-            # Apply the post-attention linear transform and add the skip.
-            x = self.projection(x)
-            x = self.add(self.drop_path(x), skip_1)
-
-            # Apply the token-wise MLP.
-            skip_2 = x
-            x = self.mlp_layer_norm(x)
-            x = self._forward_mlp(x)
-            x = self.add(self.drop_path(x), skip_2)
-
-            return x, self.prev_attn_map
-
-        ### TBKV PATCH END
+        if not self.caching and prev_attnmap is not None and self.cache is not None:
+            return self._forward_matching(x, skip_1, prev_attnmap)
 
         # Standard path (caching mode or first frame with no prev_attnmap)
         x = self.qkv(x)
@@ -326,111 +332,73 @@ class TBKVBlock(Block):
             x = self.relative_position(x, q)
         x = x.softmax(dim=-1)
 
-        #### TBKV PATCH
-
-        # Get number of heads and head dimension for merging
         H = self.heads
         head_dim = self.qkv.out_features // (3 * H)
 
-        # Merging algorithm if in caching mode otherwise save attention map for next layer
-
-
         if self.caching:
-            # Build the cache by ACCUMULATING across all caching frames.
-            # Each call to this block during the caching pass (one call per frame)
-            # appends new K/V/tokens to self.cache instead of overwriting it.
-            # This way the cache grows to hold all caching-pass frames.
-            #
-            # Class token (position 0) is always excluded from the cache so it
-            # never pollutes the patch-token matching done in the matching pass.
-
             if self.raw:
-                # Raw mode: store K/V/tokens without merging.
                 if self.has_class_token:
-                    k_new = k[:, :, 1:, :]        # [B, H, N_patch, head_dim]
+                    k_new = k[:, :, 1:, :]
                     v_new = v[:, :, 1:, :]
-                    tok_new = tokens[:, 1:, :]     # [B, N_patch, C]
+                    tok_new = tokens[:, 1:, :]
                 else:
                     k_new, v_new, tok_new = k, v, tokens
 
-                if self.cache is None:
-                    self.cache = Cache(k_new, v_new, tok_new)
-                else:
-                    self.cache = Cache(
-                        torch.cat([self.cache.K,      k_new  ], dim=2),
-                        torch.cat([self.cache.V,      v_new  ], dim=2),
-                        torch.cat([self.cache.tokens, tok_new], dim=1),
-                    )
+                self._append_cache(k_new, v_new, tok_new)
                 n_cached = int(self.cache.tokens.shape[1])
-                _kv_mb = (self.cache.K.numel() * self.cache.K.element_size() * 2) / 1e6
-
-                if not hasattr(self, '_frame_stats'):
-                    self._frame_stats = []
                 n_patch = int(k_new.shape[2])
-                self._frame_stats.append({
-                    'phase':              'caching',
-                    'original_tokens':    int(N),
-                    'n_bg':               n_patch,
-                    'n_fg':               0,
-                    'merged_tokens':      n_patch,
-                    'cache_size':         n_cached,
-                    'cache_kv_size_mb':   _kv_mb,
+                self._record_frame_stats({
+                    'phase': 'caching',
+                    'original_tokens': int(N),
+                    'n_bg': n_patch,
+                    'n_fg': 0,
+                    'merged_tokens': n_patch,
+                    'cache_size': n_cached,
+                    'cache_kv_size_mb': self._cache_size_mb(),
                 })
 
             else:
-                # Merged mode: merge background tokens for this frame, then accumulate.
                 if self.has_class_token:
                     B_merge = v.shape[0]
                     N_patch = v.shape[2] - 1
-                    k_patch = k[:, :, 1:, :]       # [B, H, N_patch, head_dim]
+                    k_patch = k[:, :, 1:, :]
                     v_patch = v[:, :, 1:, :]
-                    attn_patch = x[:, :, 1:, 1:]   # [B, H, N_patch, N_patch]
+                    attn_patch = x[:, :, 1:, 1:]
                     x_for_merge = v_patch.transpose(1, 2).reshape(B_merge, N_patch, H * head_dim)
-                    k_new, v_new, tok_new, _n_bg, _n_fg = merging(
-                        x=x_for_merge, attn_map=attn_patch,
-                        k=k_patch, v=v_patch,
-                        local_merge_ratio=self.local_merge_ratio
+                    k_new, v_new, tok_new, n_bg, n_fg = merging(
+                        x=x_for_merge,
+                        attn_map=attn_patch,
+                        k=k_patch,
+                        v=v_patch,
+                        merging_iterations=self.merging_iterations,
+                        split_tokens=self.split_tokens,
                     )
                 else:
                     B_merge = v.shape[0]
                     n_tokens = v.shape[2]
-                    k_new, v_new, tok_new, _n_bg, _n_fg = merging(
+                    k_new, v_new, tok_new, n_bg, n_fg = merging(
                         x=v.transpose(1, 2).reshape(B_merge, n_tokens, H * head_dim),
                         attn_map=x,
-                        k=k, v=v,
-                        local_merge_ratio=self.local_merge_ratio
+                        k=k,
+                        v=v,
+                        merging_iterations=self.merging_iterations,
+                        split_tokens=self.split_tokens,
                     )
 
-                if self.cache is None:
-                    self.cache = Cache(k_new, v_new, tok_new)
-                else:
-                    self.cache = Cache(
-                        torch.cat([self.cache.K,      k_new  ], dim=2),
-                        torch.cat([self.cache.V,      v_new  ], dim=2),
-                        torch.cat([self.cache.tokens, tok_new], dim=1),
-                    )
+                self._append_cache(k_new, v_new, tok_new)
                 n_cached = int(self.cache.tokens.shape[1])
-                _kv_mb = (self.cache.K.numel() * self.cache.K.element_size() * 2) / 1e6
-
-                # --- record caching-phase stats ---
-                if not hasattr(self, '_frame_stats'):
-                    self._frame_stats = []
-                self._frame_stats.append({
-                    'phase':             'caching',
-                    'original_tokens':   int(N),
-                    'n_bg':              _n_bg,
-                    'n_fg':              _n_fg,
-                    'merged_tokens':     int(tok_new.shape[1]),
-                    'cache_size':        n_cached,
-                    'cache_kv_size_mb':  _kv_mb,
+                self._record_frame_stats({
+                    'phase': 'caching',
+                    'original_tokens': int(N),
+                    'n_bg': n_bg,
+                    'n_fg': n_fg,
+                    'merged_tokens': int(tok_new.shape[1]),
+                    'cache_size': n_cached,
+                    'cache_kv_size_mb': self._cache_size_mb(),
                 })
-                # --- end stats ---
-
 
         else:
             self.prev_attn_map = x.detach().cpu()
-        
-        ### TBKV PATCH END
 
         # Adaptive token sampling is a noop if self.ats_fraction is None.
         x, ats_indices = self._adaptive_token_sampling(x, v)

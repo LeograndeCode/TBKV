@@ -37,7 +37,8 @@ model:
       merging_iterations: 3
       r_match: 0.95
       caching: true
-_output: results/evaluate/vivit_kinetics400/tbkv-n_items=25/
+_output: results/evaluate/vivit_kinetics400/tbkv-n_items=1-batch_size=1/
 weights: weights/vivit_b_kinetics400.pth
-n_items: 25
-_name: tbkv-n_items=25
+n_items: 1
+batch_size: 1
+_name: tbkv-n_items=1-batch_size=1

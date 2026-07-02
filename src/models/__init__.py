@@ -1,4 +1,3 @@
-from src.models.evit_vivit import EVITFactorizedViViT
 from src.models.tbkv_vivit import TBKVFactorizedViViT
 from src.models.vivit import FactorizedViViT
 
@@ -10,6 +9,5 @@ except ModuleNotFoundError:
 __all__ = [
 	"FactorizedViViT",
 	"TBKVFactorizedViViT",
-	"EVITFactorizedViViT",
 	"ViTDet",
 ]

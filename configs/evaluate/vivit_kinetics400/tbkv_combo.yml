@@ -1,0 +1,8 @@
+_defaults:
+  - "_tbkv.yml"
+weights: "weights/vivit_b_kinetics400.pth"
+model:
+  spatial_config:
+    block_config:
+      secondary: "none"
+      secondary_keep: 0.5

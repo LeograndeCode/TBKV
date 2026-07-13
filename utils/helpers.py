@@ -104,6 +104,8 @@ def _print_caching_stats(avg_counts, block_stats, n_cache_frames, tee_file):
     tee_print(f"  Frames used for caching : {n_cache_frames}", tee_file)
     tee_print("  FLOPs breakdown (caching mechanism, avg per video):", tee_file)
     tee_print(dict_string(avg_counts), tee_file)
+    cache_gflops = sum(float(v) for v in avg_counts.values()) / 1e9
+    tee_print(f"  Total GFLOPs (caching, for completeness only): {cache_gflops:.2f}", tee_file)
     tee_print("", tee_file)
     tee_print("  Per-block stats  (averaged over caching frames × videos):", tee_file)
     for bname, s in block_stats.items():
@@ -128,6 +130,8 @@ def _print_matching_stats(avg_counts, block_stats, top1, top5,
     tee_print("", tee_file)
     tee_print("  FLOPs breakdown (matching pass, avg per video):", tee_file)
     tee_print(dict_string(avg_counts), tee_file)
+    match_gflops = sum(float(v) for v in avg_counts.values()) / 1e9
+    tee_print(f"  Total GFLOPs (MATCHING = reported metric)    : {match_gflops:.2f}", tee_file)
     tee_print("", tee_file)
     tee_print(f"  Matching algorithm FLOPs    : {total_match_overhead:.4e}", tee_file)
     tee_print(f"  KV FLOPs saved vs. baseline : {total_saved_kv:.4e}", tee_file)

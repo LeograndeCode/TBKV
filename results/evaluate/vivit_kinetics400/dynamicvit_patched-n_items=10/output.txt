@@ -1,0 +1,11 @@
+Vanilla
+Quadro RTX 6000
+Metrics
+    top_1: 0.7
+    top_5: 0.8
+Counts
+    add_flops:    2.452e+08
+    bias_flops:   1.053e+09
+    linear_flops: 1.058e+12
+    matmul_flops: 2.822e+10
+

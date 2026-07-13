@@ -4,6 +4,68 @@ from einops import rearrange
 from typing import Any, Callable, Dict, Optional, Tuple
 from src.tbkv.merge import bipartite_soft_matching
 
+
+def perform_kv_reuse_no_reduction(
+    x: torch.Tensor,
+    cache_tokens: torch.Tensor,
+    cache_k: torch.Tensor,
+    cache_v: torch.Tensor,
+    q_proj,
+    k_proj,
+    v_proj,
+    num_heads: int,
+    r_match: float,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, int]]:
+    """
+    Build full-grid Q/K/V with KV reuse only (no token reduction / no fg-bg split).
+
+    This keeps the query/key/value token count fixed to N and only replaces
+    matched token K/V with cached values.
+    """
+    b, n, c = x.shape
+    head_dim = c // num_heads
+
+    q = q_proj(x).reshape(b, n, num_heads, head_dim).permute(0, 2, 1, 3)
+    k = torch.zeros((b, num_heads, n, head_dim), device=x.device, dtype=x.dtype)
+    v = torch.zeros((b, num_heads, n, head_dim), device=x.device, dtype=x.dtype)
+
+    # Match each token to cache by cosine similarity, then select top-r matches.
+    x_n = x / (x.norm(dim=-1, keepdim=True) + 1e-6)
+    cache_n = cache_tokens / (cache_tokens.norm(dim=-1, keepdim=True) + 1e-6)
+    sim = torch.matmul(x_n, cache_n.transpose(-2, -1))
+    best_sim, best_cache_idx = sim.max(dim=-1)
+
+    n_match = max(0, min(n, int(n * float(r_match))))
+    sorted_idx = best_sim.argsort(dim=-1, descending=True)
+    idx_match = sorted_idx[:, :n_match]
+    idx_unmatch = sorted_idx[:, n_match:]
+
+    if n_match > 0:
+        matched_cache_idx = torch.gather(best_cache_idx, 1, idx_match)
+        gather_cache = matched_cache_idx.unsqueeze(1).unsqueeze(-1).expand(-1, num_heads, -1, head_dim)
+        k_match = torch.gather(cache_k, 2, gather_cache)
+        v_match = torch.gather(cache_v, 2, gather_cache)
+        scatter_match = idx_match.unsqueeze(1).unsqueeze(-1).expand(-1, num_heads, -1, head_dim)
+        k = k.scatter(2, scatter_match, k_match)
+        v = v.scatter(2, scatter_match, v_match)
+
+    n_unmatch = idx_unmatch.shape[1]
+    if n_unmatch > 0:
+        gather_unmatch = idx_unmatch.unsqueeze(-1).expand(-1, -1, c)
+        x_unmatch = x.gather(1, gather_unmatch)
+        k_new = k_proj(x_unmatch).reshape(b, n_unmatch, num_heads, head_dim).permute(0, 2, 1, 3)
+        v_new = v_proj(x_unmatch).reshape(b, n_unmatch, num_heads, head_dim).permute(0, 2, 1, 3)
+        scatter_unmatch = idx_unmatch.unsqueeze(1).unsqueeze(-1).expand(-1, num_heads, -1, head_dim)
+        k = k.scatter(2, scatter_unmatch, k_new)
+        v = v.scatter(2, scatter_unmatch, v_new)
+
+    info = {
+        "n_tokens": int(n),
+        "n_matched_tokens": int(n_match),
+        "n_unmatched_tokens": int(n_unmatch),
+    }
+    return q, k, v, info
+
 def get_objective_score(score_attn):
     """Compute saliency score from attention."""
     # Average over attention heads if present: [B, num_heads, N, N] -> [B, N, N]
@@ -82,32 +144,36 @@ def split_warper(fsize):
     return fn
 
 
-def extract_bg_fg_tokens(x: torch.Tensor, attn: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """ Extract background and foreground tokens based on attention map."""
+def extract_bg_fg_tokens(x: torch.Tensor, attn: torch.Tensor, bg_ratio: float = 0.5) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """ Extract background and foreground tokens based on attention map.
+
+    Background = the bottom ``bg_ratio`` fraction of tokens by saliency.
+    These are the spatially-stable tokens whose K/V can be reused from cache.
+    Using a fixed ratio avoids the unstable mean-threshold issue where
+    entropy-based saliency clustering causes only ~23 % of tokens to be
+    classified as background.
+    """
 
     B, N, C = x.shape
 
+    # Get saliency score for each token so we can separate fg/bg.
+    # Accept either full attention [B, heads, N, N] or pre-computed saliency [B, N].
+    if attn.dim() == 2:
+        scores = attn.float()
+    else:
+        scores = get_objective_score(attn).squeeze(-1)  # [B, N]
 
-    # Get saliency score for each token so we can separate fg/bg
+    # Fixed-ratio split: bottom bg_ratio = background, top (1-bg_ratio) = foreground.
+    n_bg = max(1, min(int(N * bg_ratio), N - 1))
+    n_fg = N - n_bg
 
-    scores = get_objective_score(attn).squeeze(-1) # [B, N]
+    try:
+        sorted_idx = torch.argsort(scores, dim=-1, descending=False, stable=True)
+    except TypeError:
+        sorted_idx = torch.argsort(scores, dim=-1, descending=False)
 
-    # Foreground = higher saliency, background = lower saliency.
-    fg_mask = scores >= scores.mean(dim=-1, keepdim=True)
-    bg_mask = ~fg_mask
-
-    # Compute max bg/fg token counts across the batch.
-    max_bg_tokens = bg_mask.sum(dim=-1).max().item()
-    max_fg_tokens = fg_mask.sum(dim=-1).max().item()
-
-    # Get background and foreground indices via top-k saliency ranking.
-    # Basically we allow some "usure foreground" tokes to be 
-    # considered as background to have fixed size tensors and viceversa
-    # This mechanism additionally allows to handle an error margins in the saliency map
-    # by allowing some fg tokens to be considered as bg and viceversa
-    
-    idx_bg = torch.topk(scores, dim=-1, k=max_bg_tokens, largest=False).indices  # [B, max_bg_tokens]
-    idx_fg = torch.topk(scores, dim=-1, k=max_fg_tokens, largest=True).indices   # [B, max_fg_tokens]
+    idx_bg = sorted_idx[:, :n_bg]   # [B, n_bg]  — lowest saliency
+    idx_fg = sorted_idx[:, n_bg:]   # [B, n_fg]  — highest saliency
 
     x_bg = torch.gather(x, dim=-2, index=idx_bg.unsqueeze(-1).expand(-1, -1, C))  # [B, max_bg_tokens, C]
     x_fg = torch.gather(x, dim=-2, index=idx_fg.unsqueeze(-1).expand(-1, -1, C))  # [B, max_fg_tokens, C]
@@ -116,7 +182,11 @@ def extract_bg_fg_tokens(x: torch.Tensor, attn: torch.Tensor) -> Tuple[torch.Ten
 
 
     
-def compute_merge( x: torch.Tensor, merging_iterations: float) -> Tuple[Callable, ...]:
+def compute_merge(
+    x: torch.Tensor,
+    merging_iterations: int,
+    local_merge_ratio: float = 0.5,
+) -> Tuple[Callable, ...]:
     
     """
     Token merging for VideoMAE.
@@ -129,18 +199,27 @@ def compute_merge( x: torch.Tensor, merging_iterations: float) -> Tuple[Callable
     """
 
 
-    # Apply bipartite soft matching
+    # Apply bipartite soft matching.
+    # The per-iteration ratio is chosen so that after all iterations
+    # the overall keep fraction matches (1 - local_merge_ratio).
+    n_iter = max(0, int(merging_iterations))
+    if n_iter == 0:
+        def _id(tokens: torch.Tensor) -> torch.Tensor:
+            return tokens
 
-    # Fixed merge ratio to maximum
-    local_merge_ratio = 0.5
+        return _id, _id, x
+
+    target_keep = max(0.0, min(1.0, 1.0 - float(local_merge_ratio)))
+    iter_keep = target_keep ** (1.0 / n_iter)
+    iter_merge_ratio = 1.0 - iter_keep
 
     merged_tokens = x
     m_seq = []
     u_seq = []
-    for _ in range(merging_iterations):
+    for _ in range(n_iter):
         m_i, u_i = bipartite_soft_matching(
             merged_tokens,
-            local_merge_ratio,
+            iter_merge_ratio,
             class_token=False,
             distill_token=False,
         )

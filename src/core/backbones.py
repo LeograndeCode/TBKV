@@ -7,28 +7,37 @@ from src.core.base import ExtendedModule
 from src.core.utils import PositionEncoding
 
 
+def _ensure_eventful_transformer_on_path():
+    """Add eventful-transformer/ to sys.path if not already importable."""
+    try:
+        import eventful_transformer  # noqa: F401
+    except ModuleNotFoundError:
+        repo_root = Path(__file__).resolve().parents[2]
+        eventful_root = repo_root / "eventful-transformer"
+        if eventful_root.exists():
+            eventful_root_str = str(eventful_root)
+            if eventful_root_str not in sys.path:
+                sys.path.insert(0, eventful_root_str)
+
+
 def _resolve_block_class(block_class_name):
-    """Resolve block class from src.core.blocks or src.evit.blocks."""
+    """Resolve block class from src.core.blocks, src.evit.blocks, or eventful_transformer."""
     block_class = getattr(blocks, block_class_name, None)
     if block_class is not None:
         return block_class
     if block_class_name == "EVITBlock":
         from src.evit.blocks import EVITBlock
         return EVITBlock
-    if block_class_name == "EventfulBlock":
-        # Eventful blocks live in the nested eventful-transformer package.
-        try:
-            from eventful_transformer.blocks import EventfulBlock
-            return EventfulBlock
-        except ModuleNotFoundError:
-            repo_root = Path(__file__).resolve().parents[2]
-            eventful_root = repo_root / "eventful-transformer"
-            if eventful_root.exists():
-                eventful_root_str = str(eventful_root)
-                if eventful_root_str not in sys.path:
-                    sys.path.insert(0, eventful_root_str)
-                from eventful_transformer.blocks import EventfulBlock
-                return EventfulBlock
+    # All Eventful* blocks live in the eventful-transformer package.
+    _EVENTFUL_CLASSES = (
+        "EventfulBlock",
+        "EventfulTokenwiseBlock",
+        "EventfulMatmul1Block",
+    )
+    if block_class_name in _EVENTFUL_CLASSES:
+        _ensure_eventful_transformer_on_path()
+        import eventful_transformer.blocks as et_blocks
+        return getattr(et_blocks, block_class_name)
     raise AttributeError(f"module 'src.core.blocks' has no attribute '{block_class_name}'")
 
 

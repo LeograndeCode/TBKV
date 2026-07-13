@@ -1,0 +1,14 @@
+_defaults:
+  - "_size_672.yml"
+  - "_half.yml"
+vanilla: true
+model:
+  backbone_config:
+    block_config:
+      merging_iterations: 3
+      r_match: 0.5
+      caching: true
+      kv_reuse_only: true
+      token_skip: false
+      secondary: "eventful"
+      secondary_keep: 0.7

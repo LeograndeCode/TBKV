@@ -136,7 +136,7 @@ def seeded_shuffle(sequence, seed):
 
 
 def set_policies(model, policy_class, **policy_kwargs):
-    from eventful_transformer.modules import SimpleSTGTGate, TokenDeltaGate, TokenGate
+    from src.core.modules import SimpleSTGTGate, TokenDeltaGate, TokenGate
     for gate_class in [SimpleSTGTGate, TokenDeltaGate, TokenGate]:
         for gate in model.modules_of_type(gate_class):
             gate.policy = policy_class(**policy_kwargs)

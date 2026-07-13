@@ -25,14 +25,44 @@ def evaluate_vitdet_metrics(device, model, data, config):
     outputs = []
     labels = []
     n_items = config.get("n_items", len(data))
+
+    # ── Latency / peak-memory harness (identical protocol to TBKV script) ─────
+    cuda_timing = torch.cuda.is_available() and str(device).startswith("cuda")
+    latency = memory = count = 0.0
+    if cuda_timing:
+        starter = torch.cuda.Event(enable_timing=True)
+        ender = torch.cuda.Event(enable_timing=True)
+        # GPU warm-up on the first video so kernels are compiled/cached.
+        model.reset()
+        for frame, _ in DataLoader(data[0], batch_size=1):
+            with torch.inference_mode():
+                model(frame.to(device))
+        model.clear_counts()
+
     for _, vid_item in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
         vid_item = DataLoader(vid_item, batch_size=1)
         n_frames += len(vid_item)
         model.reset()
         for frame, annotations in vid_item:
+            frame = frame.to(device)
             with torch.inference_mode():
-                outputs.extend(model(frame.to(device)))
+                if cuda_timing:
+                    torch.cuda.reset_peak_memory_stats(device)
+                    starter.record()
+                    results = model(frame)
+                    ender.record()
+                    torch.cuda.synchronize()
+                    latency += starter.elapsed_time(ender)
+                    memory += torch.cuda.max_memory_allocated() / (1024 * 1024)
+                    count += 1
+                else:
+                    results = model(frame)
+            outputs.extend(results)
             labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
+
+    if count > 0:
+        print(f"Latency: {latency / count} ms", flush=True)
+        print(f"Memory: {memory / count} MB", flush=True)
 
     # MeanAveragePrecision is extremely slow. It seems fastest to call
     # update() and compute() just once, after all predictions are done.

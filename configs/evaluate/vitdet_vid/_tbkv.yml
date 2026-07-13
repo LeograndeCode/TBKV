@@ -5,6 +5,6 @@ vanilla: true
 model:
   backbone_config:
     block_config:
-      local_merge_ratio: 0.75
-      r_match: 0.95
+      merging_iterations: 3
+      r_match: 0.5
       caching: true

@@ -1,0 +1,3 @@
+_defaults:
+  - "_octa.yml"
+weights: "weights/vivit_b_kinetics400.pth"

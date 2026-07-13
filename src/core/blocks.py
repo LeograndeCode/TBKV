@@ -5,6 +5,14 @@ from math import sqrt, prod
 
 from src.core.base import ExtendedModule, numeric_tuple
 from src.core.counting import CountedAdd, CountedLinear, CountedMatmul
+from src.core.modules import (
+    SimpleSTGTGate,
+    TokenBuffer,
+    TokenDeltaGate,
+    TokenGate,
+    MatmulDeltaAccumulator,
+    MatmulBuffer,
+)
 from src.core.utils import (
     DropPath,
     RelativePositionEmbedding,
@@ -324,11 +332,10 @@ class Block(ExtendedModule):
         x_reshaped = x.reshape(x.shape[:-2] + (-1,))
         # (batch, token, dim)
 
-        # We assume that x.reshape actually copies the data. We can run
-        # into problems if this is not the case, i.e., we may end up
-        # with a gate being passed a raw reference to an accumulator
-        # state. For an example, see EventfulMatmul1Block.
-        assert x.data_ptr() != x_reshaped.data_ptr()
+        # reshape may alias input storage on some layouts; force an explicit
+        # copy in that rare case to keep downstream stateful paths safe.
+        if x.data_ptr() == x_reshaped.data_ptr():
+            x_reshaped = x_reshaped.clone()
         x = x_reshaped
 
         return x
@@ -384,3 +391,183 @@ class Block(ExtendedModule):
         if self.matmul_2_cast is not None:
             x = x.to(old_dtype)
         return x
+
+
+class EventfulTokenwiseBlock(Block):
+    """
+    A Transformer block that adds eventfulness to token-wise operations.
+    """
+
+    def __init__(self, gate_before_ln=False, stgt=False, **super_kwargs):
+        """
+        :param gate_before_ln: Determines whether token gates are placed
+        before or after layer norm operations
+        :param stgt: Whether to use the SimpleSTGTGate (instead of our
+        TokenGate) for benchmarking
+        :param super_kwargs: Kwargs for the super class (Block)
+        """
+        super().__init__(**super_kwargs)
+        self.gate_before_ln = gate_before_ln
+        token_gate_class = SimpleSTGTGate if stgt else TokenGate
+        self.qkv_gate = token_gate_class()
+        self.qkv_accumulator = TokenBuffer()
+        self.projection_gate = token_gate_class()
+        self.projection_accumulator = TokenBuffer()
+        self.mlp_gate = token_gate_class()
+        self.mlp_accumulator = TokenBuffer()
+
+    def forward(self, x):
+        skip_1, x, index = self._forward_pre_attention(x)
+        x = self.qkv_accumulator(x, index)
+        x, ats_indices = self._forward_attention(x)
+        skip_1 = self._gather_ats_skip(skip_1, ats_indices)
+        x = self._forward_post_attention(x, skip_1)
+        return x
+
+    def _forward_post_attention(self, x, skip_1):
+        # Gate-accumulator block 2
+        x, index = self.projection_gate(x)
+        x = self.projection(x)
+        x = self.projection_accumulator(x, index)
+
+        x = self.add(self.drop_path(x), skip_1)
+        skip_2 = x
+
+        # Gate-accumulator block 3
+        if self.gate_before_ln:
+            x, index = self.mlp_gate(x)
+            x = self.mlp_layer_norm(x)
+        else:
+            x = self.mlp_layer_norm(x)
+            x, index = self.mlp_gate(x)
+        x = self._forward_mlp(x)
+        x = self.mlp_accumulator(x, index)
+        x = self.add(self.drop_path(x), skip_2)
+
+        return x
+
+    def _forward_pre_attention(self, x):
+        skip_1 = x
+
+        # Gate-accumulator block 1
+        if self.gate_before_ln:
+            x, index = self.qkv_gate(x)
+            x = self.input_layer_norm(x)
+        else:
+            x = self.input_layer_norm(x)
+            x, index = self.qkv_gate(x)
+        x = self.qkv(x)
+        return skip_1, x, index
+
+
+class EventfulMatmul1Block(EventfulTokenwiseBlock):
+    """
+    An EventfulTokenWiseBlock that adds eventfulness to the query-key
+    product (in addition to token-wise operations).
+    """
+
+    def __init__(self, **super_kwargs):
+        """
+        :param super_kwargs: Kwargs for the super class (
+        EventfulTokenwiseBlock)
+        """
+        super().__init__(**super_kwargs)
+
+        # self._pool_index assumes that the input size is divisible by
+        # the pooling size.
+        if self.pool_size is not None:
+            assert all(s % p == 0 for s, p in zip(self.input_size, self.pool_size))
+
+        # This class only supports non-windowed attention for now.
+        assert self.window_size is None
+
+        self.matmul_accumulator_1 = MatmulBuffer()
+
+    def forward(self, x):
+        skip_1, x, index = self._forward_pre_attention(x)
+        x = self.qkv_accumulator(x, index)
+        x, ats_indices = self._forward_attention((x, index))
+        skip_1 = self._gather_ats_skip(skip_1, ats_indices)
+        x = self._forward_post_attention(x, skip_1)
+        return x
+
+    def _forward_attention(self, x):
+        x, v, _ = self._forward_matmul_1(x)
+        x, ats_indices = self._adaptive_token_sampling(x, v)
+        x, v, old_dtype = self._cast_matmul_2(x, v)
+        x = self.matmul(x, v)
+        x = self._recombine_heads(x)
+        x = self._uncast_matmul_2(x, old_dtype)
+        return x, ats_indices
+
+    def _forward_matmul_1(self, x):
+        x, index = x
+        q, k, v = self._partition_heads(x)
+        k = self._pool_tokens(k)
+        v = self._pool_tokens(v)
+        index_k = self._pool_index(index)
+
+        # See comment in Block._forward_attention.
+        x = self.matmul_accumulator_1(
+            q / self.scale, k.transpose(-2, -1), index, index_k
+        )
+
+        if self.relative_position is not None:
+            # We need inplace=False because x is a direct reference to
+            # an accumulator state.
+            x = self.relative_position(x, q, inplace=False)
+        x = x.softmax(dim=-1)
+        return x, v, index_k
+
+    def _pool_index(self, index):
+        if (self.pool_size is None) or (index is None):
+            return index
+        width = self.input_size[1]
+        index_y = index.div(width, rounding_mode="floor")
+        index_x = index.remainder(width)
+        index_y = index_y.div(self.pool_size[0], rounding_mode="floor")
+        index_x = index_x.div(self.pool_size[1], rounding_mode="floor")
+        index = index_y * (width // self.pool_size[1]) + index_x
+
+        # Calling .unique() still works if there are multiple items in
+        # the batch. However, the output size along dim=-1 will be the
+        # largest of the individual output sizes. This could result in
+        # some redundant downstream computation.
+        index = index.unique(dim=-1)
+        return index
+
+
+class EventfulBlock(EventfulMatmul1Block):
+    """
+    An EventfulMatmul1Block that also adds eventfulness to the
+    attention-value product.
+    """
+
+    def __init__(self, **super_kwargs):
+        """
+        :param super_kwargs: Kwargs for the super class (
+        EventfulTokenwiseBlock)
+        """
+        super().__init__(**super_kwargs)
+        self.v_gate = TokenDeltaGate()
+        self.matmul_gate = TokenDeltaGate(structure="col")
+        self.matmul_accumulator_2 = MatmulDeltaAccumulator()
+
+    def _forward_attention(self, a):
+        a, v, index_k = self._forward_matmul_1(a)
+
+        a, v, old_dtype = self._cast_matmul_2(a, v)
+        a, ats_indices = self._adaptive_token_sampling(a, v)
+        if not self.matmul_2_cast:
+            # We clone v here because it may be a direct reference to
+            # self.qkv_accumulator.a.
+            v = v.clone()
+        v_n_tilde, v_delta_tilde, index_v = self.v_gate(v, forced_index=index_k)
+        a_n_tilde, a_delta_tilde, _ = self.matmul_gate(a, forced_index=index_v)
+        a = self.matmul_accumulator_2(
+            a_n_tilde, v_n_tilde, a_delta_tilde, v_delta_tilde
+        )
+
+        a = self._recombine_heads(a)
+        a = self._uncast_matmul_2(a, old_dtype)
+        return a, ats_indices

@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from eventful_transformer.policies import TokenNormTopK
+from src.core.policies import TokenNormTopK
 from src.models.vivit import FactorizedViViT
 from src.utils.misc import get_pytorch_device, set_policies
 

@@ -5,16 +5,26 @@ import torch.nn as nn
 from src.tbkv.tbkv_utils import compute_merge, extract_bg_fg_tokens
 from src.tbkv.cache import Cache
 from src.tbkv.match import perform_tbkv_matching, perform_tbkv_matching_with_tome
+from src.tbkv.secondary import make_secondary_policy
 from src.core.blocks import Block
 from src.core.counting import CountedLinear
 
 
-def merging(x, attn_map, k, v, merging_iterations, split_tokens=True):
+def merging(
+    x,
+    attn_map,
+    k,
+    v,
+    merging_iterations,
+    local_merge_ratio=0.5,
+    split_tokens=True,
+    bg_ratio=0.5,
+):
     B, N, C = x.shape
     
     # Either split tokens by saliency, or treat all tokens as cacheable.
     if split_tokens:
-        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map)
+        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map, bg_ratio=bg_ratio)
     else:
         x_bg = x
         x_fg = x[:, :0, :]
@@ -40,7 +50,11 @@ def merging(x, attn_map, k, v, merging_iterations, split_tokens=True):
     v_bg_flat = v_bg.transpose(1, 2).reshape(B, max_bg_tokens, num_heads * head_dim)
     
     # Merge background tokens
-    m, u, merged_x_bg = compute_merge(x_bg, merging_iterations)
+    m, u, merged_x_bg = compute_merge(
+        x_bg,
+        merging_iterations=merging_iterations,
+        local_merge_ratio=local_merge_ratio,
+    )
     k_merged_flat = m(k_bg_flat)  # [B, merged_tokens, num_heads*head_dim]
     v_merged_flat = m(v_bg_flat)  # [B, merged_tokens, num_heads*head_dim]
     
@@ -57,11 +71,12 @@ def merging(x, attn_map, k, v, merging_iterations, split_tokens=True):
 
 class TBKVBlock(Block):
 
-    def __init__(self, local_merge_ratio: float = 0.5, merging_iterations: int = 1, r_match: float = 0.75, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, split_tokens: bool = True, **super_kwargs):
+    def __init__(self, local_merge_ratio: float = 0.5, merging_iterations: int = 1, r_match: float = 0.75, bg_ratio: float = 0.5, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, split_tokens: bool = True, kv_reuse_only: bool = False, matching_start_block: int = 0, token_skip: bool = False, secondary: str = "none", secondary_keep: float = 0.5, tbkv_all_blocks: bool = False, block_idx: int = 0, **super_kwargs):
 
         super().__init__(**super_kwargs)
 
         self.r_match = r_match
+        self.bg_ratio = bg_ratio
         self.local_merge_ratio = local_merge_ratio
         self.merging_iterations = merging_iterations
         self.caching = caching
@@ -71,6 +86,23 @@ class TBKVBlock(Block):
         self.use_tome = use_tome
         self.tome_r = tome_r
         self.split_tokens = split_tokens
+        self.kv_reuse_only = kv_reuse_only
+        self.matching_start_block = int(matching_start_block)
+        self.block_idx = int(block_idx)
+        self.token_skip = bool(token_skip)
+        # Secondary token-reduction policy applied AFTER TBKV matching
+        # (Eventful / MaskVD / STGT).  "none" == pure TBKV.
+        self.secondary_name = str(secondary)
+        self.secondary_keep = float(secondary_keep)
+        self.secondary_policy = make_secondary_policy(secondary, keep_ratio=secondary_keep)
+        # TBKV-on-all-blocks (incl. windowed): per-position KV-reuse keyframe
+        # state + secondary MLP-skip delta cache.
+        self.tbkv_all_blocks = bool(tbkv_all_blocks)
+        self._kf_tok = None
+        self._kf_k = None
+        self._kf_v = None
+        self._mlp_delta = None
+        self._prev_output = None
         self.cache = None  
         self.prev_attn_map = None
 
@@ -149,12 +181,6 @@ class TBKVBlock(Block):
             x, skip_1, prev_attnmap
         )
 
-        if self.split_tokens:
-            x_bg, x_fg, _, _ = extract_bg_fg_tokens(patch_x_norm, patch_attnmap)
-        else:
-            x_bg = patch_x_norm
-            x_fg = patch_x_norm[:, :0, :]
-
         if self.use_tome:
             tome_info = {
                 "r": [self.tome_r],
@@ -176,6 +202,7 @@ class TBKVBlock(Block):
                 split_tokens=self.split_tokens,
                 device=x.device,
                 _tome_info=tome_info,
+                bg_ratio=self.bg_ratio,
             )
         else:
             q, k, v, new_tokens, flop_info = perform_tbkv_matching(
@@ -190,13 +217,22 @@ class TBKVBlock(Block):
                 r_match=self.r_match,
                 split_tokens=self.split_tokens,
                 device=x.device,
+                bg_ratio=self.bg_ratio,
+                secondary_policy=self.secondary_policy,
+                block_key=id(self),
             )
 
+        # Batch size for correct FLOPs accounting:
+        # CountedLinear counts x.numel() * out_features which includes B, so saved
+        # FLOPs must also be multiplied by the batch size.
+        b = patch_x_norm.shape[0]
+        n_bg = flop_info['n_bg_tokens']
+        n_fg = flop_info['n_fg_tokens']
         n_unique_cache = int(flop_info['n_matched_tokens'])
-        n_bg_matched = int(x_bg.shape[1]) - int(flop_info['n_unmatched_tokens'])
+        n_bg_matched = n_bg - int(flop_info['n_unmatched_tokens'])
         cache_size = int(self.cache.tokens.shape[1])
-        saved_kv_flops = int(n_bg_matched * self._dim * self._head_dim * 2)
-        match_overhead_flops = int(x_bg.shape[1] * cache_size * self._dim)
+        saved_kv_flops = int(b * n_bg_matched * self._dim * self._head_dim * 2)
+        match_overhead_flops = int(b * n_bg * cache_size * self._dim)
         cache_kv_read_bytes = int(
             n_unique_cache
             * self.heads
@@ -206,8 +242,8 @@ class TBKVBlock(Block):
         )
         self._record_frame_stats({
             'phase': 'matching',
-            'n_bg': int(x_bg.shape[1]),
-            'n_fg': int(x_fg.shape[1]),
+            'n_bg': n_bg,
+            'n_fg': n_fg,
             'n_bg_matched': n_bg_matched,
             'n_bg_unmatched': int(flop_info['n_unmatched_tokens']),
             'n_unique_cache_used': n_unique_cache,
@@ -247,8 +283,15 @@ class TBKVBlock(Block):
         self.caching = self._initial_caching
         self.cache = None
         self.prev_attn_map = None
+        self._kf_tok = None
+        self._kf_k = None
+        self._kf_v = None
+        self._mlp_delta = None
+        self._prev_output = None
         self._match_calls = 0
         self._frame_stats = []   # list of dicts, one per forward call
+        if getattr(self, "secondary_policy", None) is not None:
+            self.secondary_policy.reset()
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
                               missing_keys, unexpected_keys, error_msgs):
@@ -286,15 +329,39 @@ class TBKVBlock(Block):
                                       missing_keys, unexpected_keys, error_msgs)
 
     def forward(self, x, prev_attnmap=None):
+        if self.tbkv_all_blocks:
+            return self.forward_tbkv_all(x)
+
         skip_1 = x
         x = self.input_layer_norm(x)
+        x_norm = x  # save normalized tokens for cache (used in _forward_attention)
 
-        if not self.caching and prev_attnmap is not None and self.cache is not None:
-            return self._forward_matching(x, skip_1, prev_attnmap)
+        # For block 0 (or whenever cross-block attn is unavailable), use this
+        # block's previous-frame attention as the saliency source.
+        attn_source = prev_attnmap
+        if attn_source is None:
+            attn_source = self.prev_attn_map
+
+        start_ok = self.block_idx >= self.matching_start_block
+
+        can_match = (
+            not self.caching
+            and start_ok
+            and attn_source is not None
+            and self.cache is not None
+            and attn_source.ndim == 4
+            and attn_source.shape[0] == x.shape[0]
+            and attn_source.shape[-1] == x.shape[1]
+            and attn_source.shape[-2] == x.shape[1]
+        )
+        if can_match:
+            return self._forward_matching(x, skip_1, attn_source)
 
         # Standard path (caching mode or first frame with no prev_attnmap)
         x = self.qkv(x)
-        x, ats_indices = self._forward_attention(x, skip_1, prev_attnmap=prev_attnmap)
+        # Pass x_norm so _forward_attention stores correct feature vectors in the
+        # cache (not V values), making cosine-similarity matching meaningful.
+        x, ats_indices = self._forward_attention(x, x_norm, prev_attnmap=attn_source)
         skip_1 = self._gather_ats_skip(skip_1, ats_indices)
 
         x = self.projection(x)
@@ -306,6 +373,100 @@ class TBKVBlock(Block):
         x = self.add(self.drop_path(x), skip_2)
 
         return x, self.prev_attn_map
+
+    def forward_tbkv_all(self, x):
+        """
+        TBKV on *all* blocks, including windowed ones.
+
+        Two decoupled reuse mechanisms:
+          * **KV-reuse** (TBKV) — per-position temporal matching against the
+            keyframe.  A token whose (layer-normed) feature barely changed
+            reuses the keyframe's K/V, skipping its K/V projection.  Attention
+            still runs over the FULL window token set so window partitioning and
+            relative-position embeddings stay exact.
+          * **Secondary token skip** (Eventful / MaskVD / STGT) — a pointwise,
+            window-independent MLP skip: temporally stable tokens reuse the
+            previous frame's MLP delta instead of recomputing it.
+
+        ``self.caching`` (or an empty keyframe cache) marks the keyframe, which
+        computes everything and stores the reuse state.  Matching frames reuse.
+        """
+        skip_1 = x
+        x_norm = self.input_layer_norm(x)
+        B, N, C = x_norm.shape
+        H = self.heads
+        hd = self.qkv.out_features // (3 * H)
+
+        xw = self._partition_windows(x_norm, in_qkv_domain=False)   # [BW, T, C]
+        BW, T, _ = xw.shape
+
+        q = self.q(xw).view(BW, T, H, hd).permute(0, 2, 1, 3)       # [BW, H, T, hd]
+
+        is_keyframe = self.caching or self._kf_tok is None
+        if is_keyframe:
+            k = self.k(xw).view(BW, T, H, hd).permute(0, 2, 1, 3)
+            v = self.v(xw).view(BW, T, H, hd).permute(0, 2, 1, 3)
+            self._kf_tok = xw.detach()
+            self._kf_k = k.detach()
+            self._kf_v = v.detach()
+        else:
+            xn = xw / (xw.norm(dim=-1, keepdim=True) + 1e-6)
+            cn = self._kf_tok / (self._kf_tok.norm(dim=-1, keepdim=True) + 1e-6)
+            sim = (xn * cn).sum(dim=-1)                              # [BW, T]
+            n_match = max(0, min(T, int(T * float(self.r_match))))
+            order = sim.argsort(dim=-1, descending=True)
+            idx_unm = order[:, n_match:]
+            k = self._kf_k.clone()
+            v = self._kf_v.clone()
+            n_unm = idx_unm.shape[1]
+            if n_unm > 0:
+                xu = xw.gather(1, idx_unm.unsqueeze(-1).expand(-1, -1, C))
+                ku = self.k(xu).view(BW, n_unm, H, hd).permute(0, 2, 1, 3)
+                vu = self.v(xu).view(BW, n_unm, H, hd).permute(0, 2, 1, 3)
+                su = idx_unm.unsqueeze(1).unsqueeze(-1).expand(-1, H, -1, hd)
+                k = k.scatter(2, su, ku)
+                v = v.scatter(2, su, vu)
+            self._record_frame_stats({
+                'phase': 'matching', 'n_total': int(N),
+                'n_bg_matched': int(T - n_unm) * (BW // max(1, B)),
+                'n_bg_unmatched': int(n_unm) * (BW // max(1, B)),
+                'kvreuse_windowed': True,
+            })
+
+        # ── Windowed attention over the full token set (exact rel-pos) ─────────
+        attn = self.matmul(q / self.scale, k.transpose(-2, -1))
+        if self.relative_position is not None:
+            attn = self.relative_position(attn, q)
+        attn = attn.softmax(dim=-1)
+        out = self.matmul(attn, v)                                  # [BW, H, T, hd]
+        out = self._recombine_heads(out)                           # [BW, T, C]
+        out = self._recombine_windows(out)                         # [B, N, C]
+        out = self.projection(out)
+        s2 = self.add(self.drop_path(out), skip_1)                 # [B, N, C]
+
+        # ── MLP with secondary token skip (pointwise -> window independent) ────
+        policy = self.secondary_policy
+        can_defer = (not is_keyframe) and policy.active and self._mlp_delta is not None
+        if can_defer:
+            active_idx = torch.arange(N, device=x.device).unsqueeze(0).expand(B, -1)
+            sal = torch.zeros((B, N), device=x.device)
+            keep_idx, _ = policy.select(
+                id(self), s2, sal, active_idx=active_idx, n_grid=N)
+            gk = keep_idx.unsqueeze(-1).expand(-1, -1, C)
+            s2_keep = s2.gather(1, gk)
+            delta_keep = self._forward_mlp(self.mlp_layer_norm(s2_keep))
+            new_delta = self._mlp_delta.scatter(1, gk, delta_keep)
+            if getattr(policy, "name", "none") == "eventful":
+                policy.update(id(self), s2)
+        else:
+            new_delta = self._forward_mlp(self.mlp_layer_norm(s2))
+            if policy.active and getattr(policy, "name", "none") == "eventful":
+                policy.update(id(self), s2)
+
+        self._mlp_delta = new_delta.detach()
+        x_out = self.add(self.drop_path(new_delta), s2)
+        self._prev_output = x_out.detach()
+        return x_out, None
 
     def _forward_attention(self, x, tokens, prev_attnmap=None):
         # (batch, token, dim)
@@ -371,17 +532,28 @@ class TBKVBlock(Block):
                         k=k_patch,
                         v=v_patch,
                         merging_iterations=self.merging_iterations,
+                        local_merge_ratio=self.local_merge_ratio,
                         split_tokens=self.split_tokens,
                     )
                 else:
                     B_merge = v.shape[0]
                     n_tokens = v.shape[2]
+                    # FIX: use actual input features (tokens) not V values.
+                    # tokens is now x_norm passed from forward(); for windowed
+                    # blocks partition it the same way as the qkv output.
+                    if self.window_size is not None:
+                        tokens_for_merge = self._partition_windows(
+                            tokens, in_qkv_domain=False
+                        )
+                    else:
+                        tokens_for_merge = tokens
                     k_new, v_new, tok_new, n_bg, n_fg = merging(
-                        x=v.transpose(1, 2).reshape(B_merge, n_tokens, H * head_dim),
+                        x=tokens_for_merge,
                         attn_map=x,
                         k=k,
                         v=v,
                         merging_iterations=self.merging_iterations,
+                        local_merge_ratio=self.local_merge_ratio,
                         split_tokens=self.split_tokens,
                     )
 

@@ -80,7 +80,10 @@ def run_evaluations(config, model_class, data, evaluate_function):
 
     # Load and set up the model.
     model = model_class(**(config["model"]))
-    model.load_state_dict(torch.load(config["weights"]))
+    msg = model.load_state_dict(
+        torch.load(config["weights"], map_location="cpu"), strict=False
+    )
+    print(f"Weight loading: {msg}")
     model = model.to(device)
 
     completed = []
@@ -109,15 +112,15 @@ def run_evaluations(config, model_class, data, evaluate_function):
     if config.get("vanilla", False):
         do_evaluation("Vanilla")
     for k in config.get("token_top_k", []):
-        from eventful_transformer.policies import TokenNormTopK
+        from src.core.policies import TokenNormTopK
         set_policies(model, TokenNormTopK, k=k)
         do_evaluation(f"Token top k={k}")
     for fraction in config.get("token_top_fraction", []):
-        from eventful_transformer.policies import TokenNormTopFraction
+        from src.core.policies import TokenNormTopFraction
         set_policies(model, TokenNormTopFraction, fraction=fraction)
         do_evaluation(f"Token top {fraction * 100:.1f}%")
     for threshold in config.get("token_thresholds", []):
-        from eventful_transformer.policies import TokenNormThreshold
+        from src.core.policies import TokenNormThreshold
         set_policies(model, TokenNormThreshold, threshold=threshold)
         do_evaluation(f"Token threshold {threshold}")
 

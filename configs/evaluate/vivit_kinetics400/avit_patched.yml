@@ -1,0 +1,7 @@
+_defaults:
+  - "_base.yml"
+vanilla: true
+weights: "weights/vivit_b_kinetics400.pth"
+model_impl: "avit"
+model:
+  avit_fraction: 0.85

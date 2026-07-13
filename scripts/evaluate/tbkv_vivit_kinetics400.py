@@ -15,6 +15,15 @@ def main():
     config = initialize_run(
         config_location=Path("configs", "evaluate", "vivit_kinetics400")
     )
+    # Route top-level CLI overrides (e.g. secondary=eventful secondary_keep=0.5)
+    # into the spatial block config where TBKV matching runs.
+    spatial_cfg = config["model"].get("spatial_config", {}).get("block_config")
+    if spatial_cfg is not None:
+        for key in ("r_match", "merging_iterations", "caching",
+                    "secondary", "secondary_keep", "split_tokens", "bg_ratio",
+                    "local_merge_ratio"):
+            if key in config:
+                spatial_cfg[key] = config[key]
     data = Kinetics400(
         Path("data", "kinetics400"), split="val", decode_size=224, decode_fps=25
     )

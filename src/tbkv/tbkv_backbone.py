@@ -4,6 +4,7 @@ import torch.nn as nn
 from src.core.backbones import ViTBackbone
 
 from src.tbkv.tbkv_blocks import TBKVBlock
+from src.reduction import build_reducer
 
 
 class TBKVViTBackbone(ViTBackbone):
@@ -14,8 +15,18 @@ class TBKVViTBackbone(ViTBackbone):
     def __init__(self, block_config, depth, position_encoding_size, input_size,
                  has_class_token=False, window_indices=(), windowed_class=None,
                  windowed_overrides=None, block_class="Block", **kwargs):
-        _tbkv_keys = ("local_merge_ratio", "merging_iterations", "r_match", "bg_ratio", "caching", "raw", "use_tome", "tome_r", "split_tokens", "kv_reuse_only", "matching_start_block", "token_skip", "secondary", "secondary_keep", "tbkv_all_blocks")
+        _tbkv_keys = ("local_merge_ratio", "merging_iterations", "r_match", "bg_ratio",
+                      "caching", "raw", "use_tome", "tome_r", "split_tokens",
+                      "kv_reuse_only", "matching_start_block", "token_skip",
+                      "secondary", "secondary_keep", "tbkv_all_blocks")
         tbkv_config = {k: block_config.pop(k) for k in _tbkv_keys if k in block_config}
+
+        # The SOTA reducer applied to foreground tokens. One instance is shared
+        # by every block: AViT's halting scores accumulate across depth, and a
+        # per-block instance would silently reset them.
+        fg_reducer = block_config.pop("fg_reducer", None)
+        fg_reducer_args = dict(block_config.pop("fg_reducer_args", {}) or {})
+        reducer = build_reducer(fg_reducer, **fg_reducer_args)
         super().__init__(
             block_config=block_config,
             depth=depth,
@@ -36,15 +47,11 @@ class TBKVViTBackbone(ViTBackbone):
                     block_config_i |= windowed_overrides
             else:
                 block_config_i["window_size"] = None
-            new_blocks.append(
-                TBKVBlock(
-                    input_size=input_size,
-                    has_class_token=has_class_token,
-                    block_idx=i,
-                    **block_config_i,
-                    **tbkv_config,
-                )
-            )
+            new_blocks.append(TBKVBlock(
+                input_size=input_size, has_class_token=has_class_token,
+                reducer=reducer, block_index=i, depth=depth, block_idx=i,
+                **block_config_i, **tbkv_config,
+            ))
         self.blocks = new_blocks
     
     

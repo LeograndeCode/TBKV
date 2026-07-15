@@ -39,11 +39,18 @@ def evaluate_vitdet_metrics(device, model, data, config):
                 model(frame.to(device))
         model.clear_counts()
 
+    # frame_stride > 1 keeps only every k-th frame, which widens the temporal
+    # gap between consecutive model inputs without changing the content. This
+    # is the stress axis for methods that assume frame-to-frame adjacency.
+    frame_stride = int(config.get("frame_stride", 1))
+
     for _, vid_item in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
         vid_item = DataLoader(vid_item, batch_size=1)
-        n_frames += len(vid_item)
         model.reset()
-        for frame, annotations in vid_item:
+        for f_i, (frame, annotations) in enumerate(vid_item):
+            if f_i % frame_stride:
+                continue
+            n_frames += 1
             frame = frame.to(device)
             with torch.inference_mode():
                 if cuda_timing:

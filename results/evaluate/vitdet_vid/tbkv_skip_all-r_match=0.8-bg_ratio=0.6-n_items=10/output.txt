@@ -1,0 +1,24 @@
+Evaluation
+Quadro RTX 6000
+Metrics
+    map:               0.4399
+    map_50:            0.68
+    map_75:            0.486
+    map_large:         0.4733
+    map_medium:        0.2405
+    map_per_class:     -1
+    map_small:         0.02475
+    mar_1:             0.461
+    mar_10:            0.5282
+    mar_100:           0.5295
+    mar_100_per_class: -1
+    mar_large:         0.5507
+    mar_medium:        0.3547
+    mar_small:         0.05
+Counts
+    add_flops:    9.505e+07
+    bias_flops:   1.057e+08
+    einsum_flops: 3.035e+08
+    linear_flops: 1.126e+11
+    matmul_flops: 1.42e+10
+

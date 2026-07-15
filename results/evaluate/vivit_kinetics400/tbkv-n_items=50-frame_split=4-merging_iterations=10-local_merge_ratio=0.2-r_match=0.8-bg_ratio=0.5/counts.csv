@@ -1,0 +1,2 @@
+add_flops,bias_flops,linear_flops,matmul_flops
+5.76631e+08,2.28488e+09,2.38543e+12,8.73715e+10

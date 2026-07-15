@@ -1,0 +1,130 @@
+Token top k=128
+Quadro RTX 6000
+Metrics
+    map:               0.4933
+    map_50:            0.7408
+    map_75:            0.5189
+    map_large:         0.5333
+    map_medium:        0.2589
+    map_per_class:     -1
+    map_small:         0.02236
+    mar_1:             0.54
+    mar_10:            0.5989
+    mar_100:           0.5995
+    mar_100_per_class: -1
+    mar_large:         0.6284
+    mar_medium:        0.4061
+    mar_small:         0.03182
+Counts
+    accumulator_flops: 1.107e+07
+    add_flops:         1.749e+08
+    bias_flops:        1.097e+07
+    einsum_flops:      5.311e+08
+    gate_flops:        8.724e+07
+    linear_flops:      1.123e+10
+    matmul_flops:      5.792e+09
+
+Token top k=256
+Quadro RTX 6000
+Metrics
+    map:               0.5582
+    map_50:            0.7762
+    map_75:            0.6178
+    map_large:         0.5996
+    map_medium:        0.283
+    map_per_class:     -1
+    map_small:         0.02024
+    mar_1:             0.5936
+    mar_10:            0.6555
+    mar_100:           0.6555
+    mar_100_per_class: -1
+    mar_large:         0.6864
+    mar_medium:        0.4273
+    mar_small:         0.04545
+Counts
+    accumulator_flops: 1.123e+07
+    add_flops:         1.749e+08
+    bias_flops:        2.156e+07
+    einsum_flops:      5.311e+08
+    gate_flops:        8.724e+07
+    linear_flops:      2.208e+10
+    matmul_flops:      6.84e+09
+
+Token top k=384
+Quadro RTX 6000
+Metrics
+    map:               0.5856
+    map_50:            0.7889
+    map_75:            0.6415
+    map_large:         0.6283
+    map_medium:        0.2863
+    map_per_class:     -1
+    map_small:         0.02261
+    mar_1:             0.6123
+    mar_10:            0.6732
+    mar_100:           0.6735
+    mar_100_per_class: -1
+    mar_large:         0.7042
+    mar_medium:        0.4269
+    mar_small:         0.03636
+Counts
+    accumulator_flops: 1.135e+07
+    add_flops:         1.749e+08
+    bias_flops:        3.215e+07
+    einsum_flops:      5.311e+08
+    gate_flops:        8.724e+07
+    linear_flops:      3.292e+10
+    matmul_flops:      7.616e+09
+
+Token top k=512
+Quadro RTX 6000
+Metrics
+    map:               0.6068
+    map_50:            0.7976
+    map_75:            0.6667
+    map_large:         0.6491
+    map_medium:        0.2905
+    map_per_class:     -1
+    map_small:         0.03041
+    mar_1:             0.6301
+    mar_10:            0.691
+    mar_100:           0.6914
+    mar_100_per_class: -1
+    mar_large:         0.7212
+    mar_medium:        0.4346
+    mar_small:         0.03636
+Counts
+    accumulator_flops: 1.143e+07
+    add_flops:         1.749e+08
+    bias_flops:        4.274e+07
+    einsum_flops:      5.311e+08
+    gate_flops:        8.724e+07
+    linear_flops:      4.376e+10
+    matmul_flops:      8.223e+09
+
+Token top k=768
+Quadro RTX 6000
+Metrics
+    map:               0.613
+    map_50:            0.7952
+    map_75:            0.674
+    map_large:         0.6556
+    map_medium:        0.2911
+    map_per_class:     -1
+    map_small:         0.02277
+    mar_1:             0.6347
+    mar_10:            0.7001
+    mar_100:           0.7005
+    mar_100_per_class: -1
+    mar_large:         0.7305
+    mar_medium:        0.4369
+    mar_small:         0.03636
+Counts
+    accumulator_flops: 1.154e+07
+    add_flops:         1.749e+08
+    bias_flops:        6.392e+07
+    einsum_flops:      5.311e+08
+    gate_flops:        8.724e+07
+    linear_flops:      6.545e+10
+    matmul_flops:      9.159e+09
+

@@ -4,4 +4,6 @@ vanilla: true
 weights: "weights/vivit_b_kinetics400.pth"
 model_impl: "evit"
 model:
-  evit_fraction: 0.82
+  evit_keep_rate: 0.7   # fraction of attentive tokens kept per block
+  evit_fuse: true       # fuse inattentive tokens into one (EViT's contribution)
+  evit_prune_layers: [3, 6, 9]

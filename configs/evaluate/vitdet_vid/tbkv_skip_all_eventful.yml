@@ -1,0 +1,17 @@
+# TBKV as a FIRST layer (background K/V + output reuse on all blocks), with
+# Eventful stacked on top as the secondary policy over the tokens TBKV leaves.
+_defaults:
+  - "_size_672.yml"
+  - "_half.yml"
+vanilla: true
+model:
+  backbone_config:
+    block_config:
+      merging_iterations: 3
+      r_match: 0.8
+      bg_ratio: 0.6
+      caching: true
+      token_skip: true
+      tbkv_all_blocks: true
+      secondary: "eventful"
+      secondary_keep: 0.5

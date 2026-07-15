@@ -1,0 +1,45 @@
+model:
+  classes: 400
+  input_shape:
+  - 32
+  - 3
+  - 224
+  - 224
+  normalize_mean: 0.45
+  normalize_std: 0.225
+  spatial_views: 3
+  temporal_stride: 2
+  temporal_views: 4
+  tubelet_shape:
+  - 2
+  - 16
+  - 16
+  spatial_config:
+    depth: 12
+    position_encoding_size:
+    - 14
+    - 14
+    block_config:
+      dim: 768
+      heads: 12
+      mlp_ratio: 4
+  temporal_config:
+    depth: 4
+    position_encoding_size:
+    - 16
+    block_config:
+      dim: 768
+      heads: 12
+      mlp_ratio: 4
+  evit_keep_rate: 0.7
+  evit_fuse: true
+  evit_prune_layers:
+  - 3
+  - 6
+  - 9
+_output: results/evaluate/vivit_kinetics400/evit_patched-n_items=2/
+vanilla: true
+weights: weights/vivit_b_kinetics400.pth
+model_impl: evit
+n_items: 2
+_name: evit_patched-n_items=2

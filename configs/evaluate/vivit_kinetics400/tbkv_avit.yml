@@ -1,0 +1,11 @@
+# TBKV on background tokens (K/V cache) + avit on foreground tokens.
+# Each token is reduced by exactly one mechanism; see src/reduction/.
+_defaults:
+  - "_tbkv.yml"
+weights: "weights/vivit_b_kinetics400.pth"
+model:
+  spatial_config:
+    block_config:
+      fg_reducer: "avit"
+      fg_reducer_args:
+        max_drop_rate: 0.2

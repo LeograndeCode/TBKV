@@ -1,0 +1,18 @@
+# Exact Eventful (temporal_672 setup) + TBKV recompute-set filter on top.
+# Same backbone/weights/token schedule as temporal_672; only the block classes
+# change to the TBKV subclasses, which subtract cache-matched tokens from
+# Eventful's recompute set during the matching (post-warm-up) frames.
+_defaults:
+  - "_size_672.yml"
+  - "_half.yml"
+  - "_temporal.yml"
+token_top_k: [128, 256, 384, 512, 768, 1024]
+model:
+  backbone_config:
+    block_class: "EventfulTBKVBlock"
+    windowed_class: "EventfulTBKVTokenwiseBlock"
+    block_config:
+      cache_reuse: 0.5
+      merge_iterations: 4
+      merge_ratio: 0.5
+      caching: false

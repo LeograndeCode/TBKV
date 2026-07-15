@@ -1,0 +1,44 @@
+Vanilla
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.612e+08
+    bias_flops:   2.387e+09
+    linear_flops: 2.43e+12
+    matmul_flops: 8.653e+10
+
+Vanilla
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.612e+08
+    bias_flops:   2.387e+09
+    linear_flops: 2.43e+12
+    matmul_flops: 8.653e+10
+
+Vanilla
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.612e+08
+    bias_flops:   2.387e+09
+    linear_flops: 2.43e+12
+    matmul_flops: 8.653e+10
+
+Vanilla
+Quadro RTX 6000
+Metrics
+    top_1: 1
+    top_5: 1
+Counts
+    add_flops:    5.612e+08
+    bias_flops:   2.387e+09
+    linear_flops: 2.43e+12
+    matmul_flops: 8.653e+10
+

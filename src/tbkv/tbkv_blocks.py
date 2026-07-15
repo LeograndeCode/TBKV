@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 
@@ -8,56 +7,53 @@ from src.tbkv.match import perform_tbkv_matching, perform_tbkv_matching_with_tom
 from src.tbkv.secondary import make_secondary_policy
 from src.core.blocks import Block
 from src.core.counting import CountedLinear
+from src.reduction.base import ReductionContext
 
 
-def merging(
-    x,
-    attn_map,
-    k,
-    v,
-    merging_iterations,
-    local_merge_ratio=0.5,
-    split_tokens=True,
-    bg_ratio=0.5,
-):
+def merging(x, attn_map, k, v, merging_iterations, local_merge_ratio=0.5,
+            split_tokens=True, bg_ratio=0.5):
+    """Kept for backward compatibility / external callers.
+
+    NOTE: TBKVBlock no longer calls this per-frame during caching. Instead it
+    accumulates raw background K/V across the whole caching window and calls
+    compute_merge() once at finalize time (see TBKVBlock._finalize_cache).
+    This function still performs a single-shot merge over whatever x/k/v it's
+    given, so it remains valid as a standalone utility.
+    """
     B, N, C = x.shape
-    
+
     # Either split tokens by saliency, or treat all tokens as cacheable.
     if split_tokens:
-        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map, bg_ratio=bg_ratio)
+        x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map, bg_ratio)
     else:
         x_bg = x
         x_fg = x[:, :0, :]
         idx_bg = torch.arange(N, device=x.device).unsqueeze(0).expand(B, -1)
-    
+
     # x_bg: [B, max_bg_tokens, C], idx_bg: [B, max_bg_tokens]
     max_bg_tokens = x_bg.shape[1]
-    
+
     # Extract K and V for background tokens
     # k, v have shape: [B, num_heads, N, head_dim]
     num_heads = k.shape[1]
     head_dim = k.shape[-1]
-    
+
     # Expand idx_bg for gathering: [B, max_bg_tokens] -> [B, num_heads, max_bg_tokens, head_dim]
     idx_expanded = idx_bg.unsqueeze(1).unsqueeze(-1).expand(B, num_heads, max_bg_tokens, head_dim)
-    
+
     # Gather k and v for background tokens
     k_bg = torch.gather(k, dim=2, index=idx_expanded)  # [B, num_heads, max_bg_tokens, head_dim]
     v_bg = torch.gather(v, dim=2, index=idx_expanded)  # [B, num_heads, max_bg_tokens, head_dim]
-    
+
     # Reshape for merging: [B, num_heads, max_bg_tokens, head_dim] -> [B, max_bg_tokens, num_heads*head_dim]
     k_bg_flat = k_bg.transpose(1, 2).reshape(B, max_bg_tokens, num_heads * head_dim)
     v_bg_flat = v_bg.transpose(1, 2).reshape(B, max_bg_tokens, num_heads * head_dim)
-    
+
     # Merge background tokens
-    m, u, merged_x_bg = compute_merge(
-        x_bg,
-        merging_iterations=merging_iterations,
-        local_merge_ratio=local_merge_ratio,
-    )
+    m, u, merged_x_bg = compute_merge(x_bg, merging_iterations, local_merge_ratio)
     k_merged_flat = m(k_bg_flat)  # [B, merged_tokens, num_heads*head_dim]
     v_merged_flat = m(v_bg_flat)  # [B, merged_tokens, num_heads*head_dim]
-    
+
     # Reshape back: [B, merged_tokens, num_heads*head_dim] -> [B, num_heads, merged_tokens, head_dim]
     merged_tokens = k_merged_flat.shape[1]
     k_merged = k_merged_flat.reshape(B, merged_tokens, num_heads, head_dim).transpose(1, 2)
@@ -68,10 +64,14 @@ def merging(
     return k_merged, v_merged, merged_x_bg, n_bg_orig, n_fg
 
 
-
 class TBKVBlock(Block):
 
-    def __init__(self, local_merge_ratio: float = 0.5, merging_iterations: int = 1, r_match: float = 0.75, bg_ratio: float = 0.5, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, split_tokens: bool = True, kv_reuse_only: bool = False, matching_start_block: int = 0, token_skip: bool = False, secondary: str = "none", secondary_keep: float = 0.5, tbkv_all_blocks: bool = False, block_idx: int = 0, **super_kwargs):
+    def __init__(self, local_merge_ratio: float = 0.5, merging_iterations: int = 1, r_match: float = 0.75, bg_ratio: float = 0.5, caching: bool = False, has_class_token: bool = False, raw: bool = False, use_tome: bool = False, tome_r: int = 0, split_tokens: bool = True,
+                 kv_reuse_only: bool = False, matching_start_block: int = 0,
+                 token_skip: bool = False, secondary: str = "none",
+                 secondary_keep: float = 0.5, tbkv_all_blocks: bool = False,
+                 block_idx: int = 0,
+                 reducer=None, block_index: int = 0, depth: int = 12, **super_kwargs):
 
         super().__init__(**super_kwargs)
 
@@ -86,25 +86,42 @@ class TBKVBlock(Block):
         self.use_tome = use_tome
         self.tome_r = tome_r
         self.split_tokens = split_tokens
-        self.kv_reuse_only = kv_reuse_only
+
+        # ViTDet-only TBKV variants. The detection path drives blocks directly
+        # (see src/models/tbkv_vitdet.py) and reads these off the block, so they
+        # must exist even though the ViViT path leaves them at their defaults.
+        self.kv_reuse_only = bool(kv_reuse_only)
         self.matching_start_block = int(matching_start_block)
         self.block_idx = int(block_idx)
         self.token_skip = bool(token_skip)
-        # Secondary token-reduction policy applied AFTER TBKV matching
-        # (Eventful / MaskVD / STGT).  "none" == pure TBKV.
+        self.tbkv_all_blocks = bool(tbkv_all_blocks)
         self.secondary_name = str(secondary)
         self.secondary_keep = float(secondary_keep)
         self.secondary_policy = make_secondary_policy(secondary, keep_ratio=secondary_keep)
-        # TBKV-on-all-blocks (incl. windowed): per-position KV-reuse keyframe
-        # state + secondary MLP-skip delta cache.
-        self.tbkv_all_blocks = bool(tbkv_all_blocks)
+
+        # Shared across the whole stack (AViT accumulates state across depth),
+        # so assign rather than register -- registering it in every block would
+        # duplicate it in the state dict and break checkpoint loading.
+        object.__setattr__(self, "reducer", reducer)
+        self.block_index = block_index
+        self.depth = depth
+        self.cache = None
+        self.prev_attn_map = None
         self._kf_tok = None
         self._kf_k = None
         self._kf_v = None
         self._mlp_delta = None
-        self._prev_output = None
-        self.cache = None  
-        self.prev_attn_map = None
+
+        # Accumulation buffers for cross-frame merging. During the caching
+        # window, raw (unmerged) background K/V/tokens for every frame are
+        # appended here. Once the block transitions out of caching mode,
+        # _finalize_cache() runs compute_merge() ONCE over everything that
+        # was accumulated, producing a single bounded-size cache instead of
+        # a cache that grows linearly with the number of caching frames.
+        self._pending_x_bg = []
+        self._pending_x_bg_norm = []
+        self._pending_k_bg = []
+        self._pending_v_bg = []
 
         qkv: nn.Linear = self.qkv
         dim = qkv.in_features
@@ -122,7 +139,7 @@ class TBKVBlock(Block):
             return lin
 
         self.q = build_linear(w_q, None)
-        self.k = build_linear(w_k, None)  
+        self.k = build_linear(w_k, None)
         self.v = build_linear(w_v, None)
         # dim saved for FLOPs accounting
         self._dim = dim
@@ -133,18 +150,70 @@ class TBKVBlock(Block):
             self._frame_stats = []
         self._frame_stats.append(stats)
 
-    def _append_cache(self, k_new, v_new, tok_new):
+    def _append_cache(self, k_new, v_new, tok_new, tok_new_norm):
         if self.cache is None:
-            self.cache = Cache(k_new, v_new, tok_new)
+            self.cache = Cache(k_new, v_new, tok_new, tok_new_norm)
         else:
             self.cache = Cache(
                 torch.cat([self.cache.K, k_new], dim=2),
                 torch.cat([self.cache.V, v_new], dim=2),
                 torch.cat([self.cache.tokens, tok_new], dim=1),
+                torch.cat([self.cache.tokens_norm, tok_new_norm], dim=1),
             )
 
     def _cache_size_mb(self):
         return (self.cache.K.numel() * self.cache.K.element_size() * 2) / 1e6
+
+    def _finalize_cache(self):
+        """Merge everything accumulated during the caching window into a
+        single bounded-size cache. Called exactly once, lazily, on the
+        first forward() call after self.caching has become False.
+        """
+        if not self._pending_x_bg:
+            return
+
+        x_bg_all = torch.cat(self._pending_x_bg, dim=1)         # [B, total_bg_tokens, C]
+        x_bg_norm_all = torch.cat(self._pending_x_bg_norm, dim=1)
+        k_bg_all = torch.cat(self._pending_k_bg, dim=2)   # [B, heads, total_bg_tokens, head_dim]
+        v_bg_all = torch.cat(self._pending_v_bg, dim=2)   # [B, heads, total_bg_tokens, head_dim]
+
+        B, total_tokens, C = x_bg_all.shape
+        num_heads, head_dim = k_bg_all.shape[1], k_bg_all.shape[-1]
+
+        k_bg_flat = k_bg_all.transpose(1, 2).reshape(B, total_tokens, num_heads * head_dim)
+        v_bg_flat = v_bg_all.transpose(1, 2).reshape(B, total_tokens, num_heads * head_dim)
+
+        # Single merge pass over the FULL accumulated set of background
+        # tokens across all caching frames -- this is what bounds cache
+        # size regardless of how many frames were spent in caching mode.
+        # The similarity metric is computed on the normed view; the resulting
+        # merge is then applied identically to the unnormed view and to K/V.
+        m, u, merged_x_norm = compute_merge(
+            x_bg_norm_all, self.merging_iterations, self.local_merge_ratio
+        )
+        merged_x = m(x_bg_all)
+        k_merged_flat = m(k_bg_flat)
+        v_merged_flat = m(v_bg_flat)
+
+        merged_tokens = k_merged_flat.shape[1]
+        k_merged = k_merged_flat.reshape(B, merged_tokens, num_heads, head_dim).transpose(1, 2)
+        v_merged = v_merged_flat.reshape(B, merged_tokens, num_heads, head_dim).transpose(1, 2)
+
+        # Overwrite (not append) -- this replaces any prior cache state.
+        self.cache = Cache(k_merged, v_merged, merged_x, merged_x_norm)
+
+        self._record_frame_stats({
+            'phase': 'cache_finalize',
+            'caching_frames_accumulated': len(self._pending_x_bg),
+            'total_bg_tokens_accumulated': int(total_tokens),
+            'merged_tokens': int(merged_tokens),
+            'cache_kv_size_mb': self._cache_size_mb(),
+        })
+
+        self._pending_x_bg = []
+        self._pending_x_bg_norm = []
+        self._pending_k_bg = []
+        self._pending_v_bg = []
 
     def _split_matching_inputs(self, x, skip_1, prev_attnmap):
         if self.has_class_token:
@@ -181,6 +250,12 @@ class TBKVBlock(Block):
             x, skip_1, prev_attnmap
         )
 
+        if self.split_tokens:
+            x_bg, x_fg, _, _ = extract_bg_fg_tokens(patch_x_norm, patch_attnmap, self.bg_ratio)
+        else:
+            x_bg = patch_x_norm
+            x_fg = patch_x_norm[:, :0, :]
+
         if self.use_tome:
             tome_info = {
                 "r": [self.tome_r],
@@ -199,10 +274,10 @@ class TBKVBlock(Block):
                 v_proj=self.v,
                 num_heads=self.heads,
                 r_match=self.r_match,
+                bg_ratio=self.bg_ratio,
                 split_tokens=self.split_tokens,
                 device=x.device,
                 _tome_info=tome_info,
-                bg_ratio=self.bg_ratio,
             )
         else:
             q, k, v, new_tokens, flop_info = perform_tbkv_matching(
@@ -215,24 +290,16 @@ class TBKVBlock(Block):
                 v_proj=self.v,
                 num_heads=self.heads,
                 r_match=self.r_match,
+                bg_ratio=self.bg_ratio,
                 split_tokens=self.split_tokens,
                 device=x.device,
-                bg_ratio=self.bg_ratio,
-                secondary_policy=self.secondary_policy,
-                block_key=id(self),
             )
 
-        # Batch size for correct FLOPs accounting:
-        # CountedLinear counts x.numel() * out_features which includes B, so saved
-        # FLOPs must also be multiplied by the batch size.
-        b = patch_x_norm.shape[0]
-        n_bg = flop_info['n_bg_tokens']
-        n_fg = flop_info['n_fg_tokens']
         n_unique_cache = int(flop_info['n_matched_tokens'])
-        n_bg_matched = n_bg - int(flop_info['n_unmatched_tokens'])
+        n_bg_matched = int(x_bg.shape[1]) - int(flop_info['n_unmatched_tokens'])
         cache_size = int(self.cache.tokens.shape[1])
-        saved_kv_flops = int(b * n_bg_matched * self._dim * self._head_dim * 2)
-        match_overhead_flops = int(b * n_bg * cache_size * self._dim)
+        saved_kv_flops = int(n_bg_matched * self._dim * self._head_dim * 2)
+        match_overhead_flops = int(x_bg.shape[1] * cache_size * self._dim)
         cache_kv_read_bytes = int(
             n_unique_cache
             * self.heads
@@ -242,8 +309,8 @@ class TBKVBlock(Block):
         )
         self._record_frame_stats({
             'phase': 'matching',
-            'n_bg': n_bg,
-            'n_fg': n_fg,
+            'n_bg': int(x_bg.shape[1]),
+            'n_fg': int(x_fg.shape[1]),
             'n_bg_matched': n_bg_matched,
             'n_bg_unmatched': int(flop_info['n_unmatched_tokens']),
             'n_unique_cache_used': n_unique_cache,
@@ -271,6 +338,20 @@ class TBKVBlock(Block):
         x = self.projection(x)
         x = self.add(self.drop_path(x), skip_1)
 
+        # Hand the foreground tokens to the SOTA reducer, if one is configured.
+        # TBKV already handles the background via its K/V cache; this composes
+        # the two, so each token is reduced by exactly one mechanism.
+        n_fg = int(flop_info['n_fg_tokens'])
+        op = self._plan_foreground_reduction(x, attn, k, n_fg)
+        if op is not None:
+            x = torch.cat([x[:, :-n_fg], op(x[:, -n_fg:])], dim=1)
+            # The attention map is handed to the next block as prev_attnmap and
+            # is what drives its foreground/background split. If the tokens
+            # shrink but the map does not, that split indexes a longer map into
+            # a shorter token tensor. Reduce the query axis to match.
+            attn = self._reduce_attn_rows(attn, op, n_fg)
+            self.prev_attn_map = attn.detach().cpu()
+
         skip_2 = x
         x = self.mlp_layer_norm(x)
         x = self._forward_mlp(x)
@@ -278,8 +359,54 @@ class TBKVBlock(Block):
 
         return x, self.prev_attn_map
 
+    @staticmethod
+    def _reduce_attn_rows(attn, op, n_fg):
+        """Apply a token operator to the foreground rows of the attention map.
+
+        The operator maps [B, N, C] -> [B, N', C], so the head and key axes are
+        folded into the channel axis, reduced, and unfolded. Only the query axis
+        changes; key columns are untouched (nothing removes keys here).
+        """
+        B, H, _, Nk = attn.shape
+        fg = attn[:, :, -n_fg:, :].permute(0, 2, 1, 3).reshape(B, n_fg, H * Nk)
+        fg = op(fg)
+        n_new = fg.shape[1]
+        fg = fg.reshape(B, n_new, H, Nk).permute(0, 2, 1, 3)
+        return torch.cat([attn[:, :, :-n_fg, :], fg], dim=2)
+
+    def _plan_foreground_reduction(self, x, attn, k, n_fg):
+        """Plan the configured TokenReducer over the foreground tokens only.
+
+        Layout matters here. perform_tbkv_matching builds the sequence as
+        [matched_cache | unmatched_bg | foreground], and _prepend_class_token
+        puts the class token in front of both the queries and the keys. So the
+        foreground is exactly the last n_fg entries of the query axis *and* of
+        the key axis, which is what lets us hand the reducer a self-contained
+        sub-problem: fg tokens, fg-to-fg attention, fg keys.
+        """
+        if self.reducer is None or n_fg <= 1:
+            return None
+
+        cls_attn = (
+            attn[:, :, 0, -n_fg:].mean(dim=1) if self.has_class_token else None
+        )
+        ctx = ReductionContext(
+            attn=attn[:, :, -n_fg:, -n_fg:],
+            keys=k[:, :, -n_fg:, :],
+            cls_attn=cls_attn,
+            # The slice we hand over contains no class token, even though the
+            # full sequence does; the class token is preserved untouched below.
+            has_class_token=False,
+            block_index=self.block_index,
+            depth=self.depth,
+        )
+
+        return self.reducer.plan(x[:, -n_fg:], ctx)
+
     def reset_self(self):
         super().reset_self()
+        if self.reducer is not None and self.block_index == 0:
+            self.reducer.reset()
         self.caching = self._initial_caching
         self.cache = None
         self.prev_attn_map = None
@@ -287,11 +414,12 @@ class TBKVBlock(Block):
         self._kf_k = None
         self._kf_v = None
         self._mlp_delta = None
-        self._prev_output = None
         self._match_calls = 0
         self._frame_stats = []   # list of dicts, one per forward call
-        if getattr(self, "secondary_policy", None) is not None:
-            self.secondary_policy.reset()
+        self._pending_x_bg = []
+        self._pending_x_bg_norm = []
+        self._pending_k_bg = []
+        self._pending_v_bg = []
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
                               missing_keys, unexpected_keys, error_msgs):
@@ -329,39 +457,24 @@ class TBKVBlock(Block):
                                       missing_keys, unexpected_keys, error_msgs)
 
     def forward(self, x, prev_attnmap=None):
-        if self.tbkv_all_blocks:
-            return self.forward_tbkv_all(x)
-
         skip_1 = x
         x = self.input_layer_norm(x)
-        x_norm = x  # save normalized tokens for cache (used in _forward_attention)
 
-        # For block 0 (or whenever cross-block attn is unavailable), use this
-        # block's previous-frame attention as the saliency source.
-        attn_source = prev_attnmap
-        if attn_source is None:
-            attn_source = self.prev_attn_map
+        # Lazily finalize the accumulated cache exactly once, the first
+        # time we're no longer in caching mode but still have pending
+        # (unmerged) frames sitting in the accumulation buffers.
+        if not self.caching and self.cache is None and self._pending_x_bg:
+            self._finalize_cache()
 
-        start_ok = self.block_idx >= self.matching_start_block
-
-        can_match = (
-            not self.caching
-            and start_ok
-            and attn_source is not None
-            and self.cache is not None
-            and attn_source.ndim == 4
-            and attn_source.shape[0] == x.shape[0]
-            and attn_source.shape[-1] == x.shape[1]
-            and attn_source.shape[-2] == x.shape[1]
-        )
-        if can_match:
-            return self._forward_matching(x, skip_1, attn_source)
+        if not self.caching and prev_attnmap is not None and self.cache is not None:
+            return self._forward_matching(x, skip_1, prev_attnmap)
 
         # Standard path (caching mode or first frame with no prev_attnmap)
+        tokens_norm = x
         x = self.qkv(x)
-        # Pass x_norm so _forward_attention stores correct feature vectors in the
-        # cache (not V values), making cosine-similarity matching meaningful.
-        x, ats_indices = self._forward_attention(x, x_norm, prev_attnmap=attn_source)
+        x, ats_indices = self._forward_attention(
+            x, skip_1, prev_attnmap=prev_attnmap, tokens_norm=tokens_norm
+        )
         skip_1 = self._gather_ats_skip(skip_1, ats_indices)
 
         x = self.projection(x)
@@ -468,10 +581,11 @@ class TBKVBlock(Block):
         self._prev_output = x_out.detach()
         return x_out, None
 
-    def _forward_attention(self, x, tokens, prev_attnmap=None):
+    def _forward_attention(self, x, tokens, prev_attnmap=None, tokens_norm=None):
         # (batch, token, dim)
         B, N, C = tokens.shape
-
+        if tokens_norm is None:
+            tokens_norm = tokens
 
         # Partition the windows and attention heads. _window_partition
         # is a noop if self.window_size is None. Windows are arranged
@@ -498,14 +612,19 @@ class TBKVBlock(Block):
 
         if self.caching:
             if self.raw:
+                # Raw mode never merges -- it caches exact tokens verbatim,
+                # so there's nothing to accumulate-then-merge. Kept as an
+                # incremental append, same as before.
                 if self.has_class_token:
                     k_new = k[:, :, 1:, :]
                     v_new = v[:, :, 1:, :]
                     tok_new = tokens[:, 1:, :]
+                    tok_new_norm = tokens_norm[:, 1:, :]
                 else:
                     k_new, v_new, tok_new = k, v, tokens
+                    tok_new_norm = tokens_norm
 
-                self._append_cache(k_new, v_new, tok_new)
+                self._append_cache(k_new, v_new, tok_new, tok_new_norm)
                 n_cached = int(self.cache.tokens.shape[1])
                 n_patch = int(k_new.shape[2])
                 self._record_frame_stats({
@@ -519,54 +638,56 @@ class TBKVBlock(Block):
                 })
 
             else:
+                # Non-raw caching: extract this frame's background K/V and
+                # STASH them (no merge yet). The actual compute_merge() call
+                # happens once, across ALL accumulated caching frames, in
+                # _finalize_cache() when the block transitions to matching
+                # mode. This is what bounds final cache size instead of
+                # letting it grow linearly with the number of caching frames.
                 if self.has_class_token:
-                    B_merge = v.shape[0]
-                    N_patch = v.shape[2] - 1
                     k_patch = k[:, :, 1:, :]
                     v_patch = v[:, :, 1:, :]
                     attn_patch = x[:, :, 1:, 1:]
-                    x_for_merge = v_patch.transpose(1, 2).reshape(B_merge, N_patch, H * head_dim)
-                    k_new, v_new, tok_new, n_bg, n_fg = merging(
-                        x=x_for_merge,
-                        attn_map=attn_patch,
-                        k=k_patch,
-                        v=v_patch,
-                        merging_iterations=self.merging_iterations,
-                        local_merge_ratio=self.local_merge_ratio,
-                        split_tokens=self.split_tokens,
-                    )
+                    patch_tokens = tokens[:, 1:, :]
+                    patch_tokens_norm = tokens_norm[:, 1:, :]
                 else:
-                    B_merge = v.shape[0]
-                    n_tokens = v.shape[2]
-                    # FIX: use actual input features (tokens) not V values.
-                    # tokens is now x_norm passed from forward(); for windowed
-                    # blocks partition it the same way as the qkv output.
-                    if self.window_size is not None:
-                        tokens_for_merge = self._partition_windows(
-                            tokens, in_qkv_domain=False
-                        )
-                    else:
-                        tokens_for_merge = tokens
-                    k_new, v_new, tok_new, n_bg, n_fg = merging(
-                        x=tokens_for_merge,
-                        attn_map=x,
-                        k=k,
-                        v=v,
-                        merging_iterations=self.merging_iterations,
-                        local_merge_ratio=self.local_merge_ratio,
-                        split_tokens=self.split_tokens,
-                    )
+                    k_patch, v_patch, attn_patch, patch_tokens = k, v, x, tokens
+                    patch_tokens_norm = tokens_norm
 
-                self._append_cache(k_new, v_new, tok_new)
-                n_cached = int(self.cache.tokens.shape[1])
+                if self.split_tokens:
+                    x_bg, x_fg, idx_bg, _ = extract_bg_fg_tokens(patch_tokens, attn_patch, self.bg_ratio)
+                else:
+                    x_bg = patch_tokens
+                    x_fg = patch_tokens[:, :0, :]
+                    idx_bg = torch.arange(
+                        patch_tokens.shape[1], device=x.device
+                    ).unsqueeze(0).expand(patch_tokens.shape[0], -1)
+
+                # Same background positions, post-LayerNorm view.
+                x_bg_norm = torch.gather(
+                    patch_tokens_norm, dim=1,
+                    index=idx_bg.unsqueeze(-1).expand(-1, -1, patch_tokens_norm.shape[-1]),
+                )
+
+                num_heads_local = k_patch.shape[1]
+                head_dim_local = k_patch.shape[-1]
+                idx_expanded = idx_bg.unsqueeze(1).unsqueeze(-1).expand(
+                    -1, num_heads_local, -1, head_dim_local
+                )
+                k_bg = torch.gather(k_patch, dim=2, index=idx_expanded)
+                v_bg = torch.gather(v_patch, dim=2, index=idx_expanded)
+
+                self._pending_x_bg.append(x_bg)
+                self._pending_x_bg_norm.append(x_bg_norm)
+                self._pending_k_bg.append(k_bg)
+                self._pending_v_bg.append(v_bg)
+
                 self._record_frame_stats({
                     'phase': 'caching',
                     'original_tokens': int(N),
-                    'n_bg': n_bg,
-                    'n_fg': n_fg,
-                    'merged_tokens': int(tok_new.shape[1]),
-                    'cache_size': n_cached,
-                    'cache_kv_size_mb': self._cache_size_mb(),
+                    'n_bg': int(x_bg.shape[1]),
+                    'n_fg': int(x_fg.shape[1]),
+                    'pending_frames_accumulated': len(self._pending_x_bg),
                 })
 
         else:
@@ -585,4 +706,3 @@ class TBKVBlock(Block):
         # (batch, token, dim)
 
         return x, ats_indices
-

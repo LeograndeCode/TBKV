@@ -23,8 +23,10 @@ model:
       dim: 768
       heads: 12
       mlp_ratio: 4
-      merging_iterations: 3
-      r_match: 0.95
+      merging_iterations: 10
+      local_merge_ratio: 0.1
+      r_match: 0.5
+      bg_ratio: 0.5
       caching: true
   temporal_config:
     depth: 4
@@ -34,8 +36,10 @@ model:
       dim: 768
       heads: 12
       mlp_ratio: 4
-      merging_iterations: 3
-      r_match: 0.95
+      merging_iterations: 10
+      local_merge_ratio: 0.1
+      r_match: 0.5
+      bg_ratio: 0.5
       caching: true
 _output: results/evaluate/vivit_kinetics400/tbkv-n_items=10/
 weights: weights/vivit_b_kinetics400.pth

@@ -32,7 +32,7 @@ def evaluate_vivit_metrics(device, model, data, config):
 
     data_loader = DataLoader(data, batch_size=1, num_workers=config.get("num_workers", 2))
     n_items        = config.get("n_items", len(data_loader))
-    n_cache_frames = config.get("frame_split", 16)
+    n_cache_frames = config.get("frame_split", 4)
 
     all_cache_counts = []
     all_match_counts = []

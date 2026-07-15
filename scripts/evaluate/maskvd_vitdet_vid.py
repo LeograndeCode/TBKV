@@ -60,7 +60,7 @@ def get_region_mask_dynamic(results, image_shape, conf_threshold=0.5, region_siz
     return mask_index, sparsity
 
 
-def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0):
+def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0, frame_stride=1):
     model.counting()
     model.clear_counts()
     n_frames = 0
@@ -84,11 +84,15 @@ def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0):
 
     for _, vid_item in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
         loader = DataLoader(vid_item, batch_size=1)
-        n_frames += len(loader)
         model.reset()
         frame_results = []
         step = 0
-        for frame, annotations in loader:
+        # frame_stride > 1 keeps only every k-th frame; `step` counts kept
+        # frames so the keyframe period still refers to model inputs.
+        for _raw_idx, (frame, annotations) in enumerate(loader):
+            if _raw_idx % frame_stride:
+                continue
+            n_frames += 1
             with torch.inference_mode():
                 if step % period == 0:
                     # Full inference: no masking
@@ -157,6 +161,7 @@ def main():
     period = int(overrides.get("period", 4))
     conf = float(overrides.get("conf", 0.5))
     margin = int(overrides.get("margin", 0))
+    frame_stride = int(overrides.get("frame_stride", 1))
     output_dir = Path(overrides.get("_output", "/dev/shm/compare/maskvd_672/"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -212,7 +217,8 @@ def main():
           f"(period={period}, conf={conf}, margin={margin})...")
 
     metrics, counts, avg_sparsity = run_evaluation(
-        device, model, data, n_items, period=period, conf=conf, margin=margin
+        device, model, data, n_items, period=period, conf=conf, margin=margin,
+        frame_stride=frame_stride,
     )
 
     total_gflops = sum(v for v in counts.values()) / 1e9

@@ -1,0 +1,72 @@
+Vanilla
+Quadro RTX 6000
+Metrics
+    map:               0.6905
+    map_50:            0.9056
+    map_75:            0.7695
+    map_large:         0.7318
+    map_medium:        0.3386
+    map_per_class:     -1
+    map_small:         0.1571
+    mar_1:             0.6953
+    mar_10:            0.7462
+    mar_100:           0.7462
+    mar_100_per_class: -1
+    mar_large:         0.785
+    mar_medium:        0.424
+    mar_small:         0.2259
+Counts
+    add_flops:    3.99e+08
+    bias_flops:   1.463e+08
+    einsum_flops: 7.587e+08
+    linear_flops: 1.498e+11
+    matmul_flops: 2.337e+10
+
+Vanilla
+Quadro RTX 6000
+Metrics
+    map:               0.6905
+    map_50:            0.9056
+    map_75:            0.7695
+    map_large:         0.7318
+    map_medium:        0.3386
+    map_per_class:     -1
+    map_small:         0.1571
+    mar_1:             0.6953
+    mar_10:            0.7462
+    mar_100:           0.7462
+    mar_100_per_class: -1
+    mar_large:         0.785
+    mar_medium:        0.424
+    mar_small:         0.2259
+Counts
+    add_flops:    3.99e+08
+    bias_flops:   1.463e+08
+    einsum_flops: 7.587e+08
+    linear_flops: 1.498e+11
+    matmul_flops: 2.337e+10
+
+Vanilla
+Quadro RTX 6000
+Metrics
+    map:               0.6905
+    map_50:            0.9056
+    map_75:            0.7695
+    map_large:         0.7318
+    map_medium:        0.3386
+    map_per_class:     -1
+    map_small:         0.1571
+    mar_1:             0.6953
+    mar_10:            0.7462
+    mar_100:           0.7462
+    mar_100_per_class: -1
+    mar_large:         0.785
+    mar_medium:        0.424
+    mar_small:         0.2259
+Counts
+    add_flops:    3.99e+08
+    bias_flops:   1.463e+08
+    einsum_flops: 7.587e+08
+    linear_flops: 1.498e+11
+    matmul_flops: 2.337e+10
+

@@ -1,12 +1,11 @@
+# TBKV on background tokens (K/V cache) + tome on foreground tokens.
+# Each token is reduced by exactly one mechanism; see src/reduction/.
 _defaults:
   - "_tbkv.yml"
+weights: "weights/vivit_b_kinetics400.pth"
 model:
   spatial_config:
     block_config:
-      use_tome: true
-      tome_r_ratio: 0.1  # fraction of fg tokens to merge per block (0=off, 0.1=recommended)
-  temporal_config:
-    block_config:
-      use_tome: true
-      tome_r_ratio: 0.1
-weights: "weights/vivit_b_kinetics400_final_24.pth"
+      fg_reducer: "tome"
+      fg_reducer_args:
+        r: 8

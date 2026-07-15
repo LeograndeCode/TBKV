@@ -25,6 +25,12 @@ def _resolve_block_class(block_class_name):
     block_class = getattr(blocks, block_class_name, None)
     if block_class is not None:
         return block_class
+    if block_class_name in ("TBKVEventfulBlock", "TBKVEventfulTokenwiseBlock"):
+        import src.tbkv_eventful.blocks as tbkv_et_blocks
+        return getattr(tbkv_et_blocks, block_class_name)
+    if block_class_name in ("EventfulTBKVBlock", "EventfulTBKVTokenwiseBlock"):
+        import src.eventful_tbkv.blocks as et
+        return getattr(et, block_class_name)
     if block_class_name == "EVITBlock":
         from src.evit.blocks import EVITBlock
         return EVITBlock

@@ -4,11 +4,18 @@ _output: "results/evaluate/vivit_kinetics400/${_name}/"
 model:
   spatial_config:
     block_config:
-      merging_iterations: 3
-      r_match: 0.95
+      # Token count decays as (1 - local_merge_ratio) ** merging_iterations.
+      # Many gentle passes preserve a diverse cache; a few aggressive ones
+      # (the old 0.5 default) collapse it to a couple of tokens.
+      merging_iterations: 10
+      local_merge_ratio: 0.1
+      r_match: 0.5
+      bg_ratio: 0.5
       caching: true
   temporal_config:
     block_config:
-      merging_iterations: 3
-      r_match: 0.95
+      merging_iterations: 10
+      local_merge_ratio: 0.1
+      r_match: 0.5
+      bg_ratio: 0.5
       caching: true

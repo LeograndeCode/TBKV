@@ -4,4 +4,4 @@ vanilla: true
 weights: "weights/vivit_b_kinetics400.pth"
 model_impl: "tome"
 model:
-  tome_fraction: 0.88
+  tome_r: 8          # tokens merged per block (ToMe's r)

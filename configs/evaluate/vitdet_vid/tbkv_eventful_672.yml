@@ -1,0 +1,16 @@
+# Eventful as the base; TBKV rebuilt as motion compensation on top of it.
+# Identical to temporal_672 except the block class, so any difference is
+# attributable to the content-addressed reference and nothing else.
+_defaults:
+  - "_size_672.yml"
+  - "_half.yml"
+  - "_temporal.yml"
+token_top_k: [128, 256, 384, 512, 768, 1024]
+model:
+  backbone_config:
+    block_class: "TBKVEventfulBlock"
+    windowed_class: "TBKVEventfulTokenwiseBlock"
+    block_config:
+      tbkv_radius: 3     # max compensable displacement, in tokens
+      tbkv_dim: 64       # descriptor channels used for matching
+      tbkv_tau: 0.9      # only adopt a match we trust; else behave as Eventful

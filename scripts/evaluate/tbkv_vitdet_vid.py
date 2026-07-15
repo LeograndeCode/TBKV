@@ -112,6 +112,8 @@ def evaluate_vitdet_metrics(device, model, data, config):
         count                 = int(ckpt.get("count", 0))
         print(f"  {start_video} / {n_items} videos already done.", flush=True)
 
+    frame_stride = int(config.get("frame_stride", 1))
+
     model.clear_counts()
 
     # ── GPU warm-up ──────────────────────────────────────────────────────────
@@ -140,7 +142,15 @@ def evaluate_vitdet_metrics(device, model, data, config):
         model.reset()
         model.set_mode("matching")
 
-        for frame_idx, (frame, annotations) in enumerate(vid_loader):
+        # frame_stride > 1 keeps only every k-th frame. frame_idx counts the
+        # *kept* frames, so the caching window still covers the first
+        # n_cache_frames inputs the model actually sees.
+        _kept = 0
+        for _raw_idx, (frame, annotations) in enumerate(vid_loader):
+            if _raw_idx % frame_stride:
+                continue
+            frame_idx = _kept
+            _kept += 1
             if max_frames is not None and frame_idx >= max_frames:
                 break
             n_frames += 1

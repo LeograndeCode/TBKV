@@ -1,0 +1,156 @@
+Token top k=128
+Quadro RTX 6000
+Metrics
+    map:               0.382
+    map_50:            0.6287
+    map_75:            0.4025
+    map_large:         0.4236
+    map_medium:        0.2124
+    map_per_class:     -1
+    map_small:         0.00302
+    mar_1:             0.4257
+    mar_10:            0.4707
+    mar_100:           0.4724
+    mar_100_per_class: -1
+    mar_large:         0.5065
+    mar_medium:        0.2661
+    mar_small:         0.01477
+Counts
+    accumulator_flops: 1.098e+07
+    add_flops:         3.99e+08
+    bias_flops:        1.364e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        1.99e+08
+    linear_flops:      1.397e+10
+    matmul_flops:      7.388e+09
+
+Token top k=256
+Quadro RTX 6000
+Metrics
+    map:               0.5079
+    map_50:            0.7454
+    map_75:            0.5368
+    map_large:         0.5643
+    map_medium:        0.239
+    map_per_class:     -1
+    map_small:         0.06133
+    mar_1:             0.555
+    mar_10:            0.6091
+    mar_100:           0.6099
+    mar_100_per_class: -1
+    mar_large:         0.6641
+    mar_medium:        0.321
+    mar_small:         0.07955
+Counts
+    accumulator_flops: 1.137e+07
+    add_flops:         3.99e+08
+    bias_flops:        2.402e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        1.99e+08
+    linear_flops:      2.46e+10
+    matmul_flops:      1.01e+10
+
+Token top k=384
+Quadro RTX 6000
+Metrics
+    map:               0.5993
+    map_50:            0.8468
+    map_75:            0.6671
+    map_large:         0.6521
+    map_medium:        0.3548
+    map_per_class:     -1
+    map_small:         0.08987
+    mar_1:             0.6186
+    mar_10:            0.6748
+    mar_100:           0.675
+    mar_100_per_class: -1
+    mar_large:         0.7263
+    mar_medium:        0.41
+    mar_small:         0.1227
+Counts
+    accumulator_flops: 1.175e+07
+    add_flops:         3.99e+08
+    bias_flops:        3.44e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        1.99e+08
+    linear_flops:      3.523e+10
+    matmul_flops:      1.281e+10
+
+Token top k=512
+Quadro RTX 6000
+Metrics
+    map:               0.6451
+    map_50:            0.8868
+    map_75:            0.7074
+    map_large:         0.6994
+    map_medium:        0.3597
+    map_per_class:     -1
+    map_small:         0.1294
+    mar_1:             0.6478
+    mar_10:            0.7022
+    mar_100:           0.7022
+    mar_100_per_class: -1
+    mar_large:         0.7518
+    mar_medium:        0.4182
+    mar_small:         0.1722
+Counts
+    accumulator_flops: 1.213e+07
+    add_flops:         3.99e+08
+    bias_flops:        4.478e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        1.99e+08
+    linear_flops:      4.586e+10
+    matmul_flops:      1.553e+10
+
+Token top k=768
+Quadro RTX 6000
+Metrics
+    map:               0.6866
+    map_50:            0.9046
+    map_75:            0.7722
+    map_large:         0.7398
+    map_medium:        0.3893
+    map_per_class:     -1
+    map_small:         0.1336
+    mar_1:             0.6856
+    mar_10:            0.7355
+    mar_100:           0.7355
+    mar_100_per_class: -1
+    mar_large:         0.7864
+    mar_medium:        0.4473
+    mar_small:         0.1756
+Counts
+    accumulator_flops: 1.29e+07
+    add_flops:         3.99e+08
+    bias_flops:        6.554e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        1.99e+08
+    linear_flops:      6.712e+10
+    matmul_flops:      2.095e+10
+
+Token top k=1024
+Quadro RTX 6000
+Metrics
+    map:               0.6934
+    map_50:            0.9006
+    map_75:            0.7776
+    map_large:         0.7457
+    map_medium:        0.3952
+    map_per_class:     -1
+    map_small:         0.13
+    mar_1:             0.6932
+    mar_10:            0.7437
+    mar_100:           0.7437
+    mar_100_per_class: -1
+    mar_large:         0.7945
+    mar_medium:        0.4496
+    mar_small:         0.1705
+Counts
+    accumulator_flops: 1.367e+07
+    add_flops:         3.99e+08
+    bias_flops:        8.63e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        1.99e+08
+    linear_flops:      8.837e+10
+    matmul_flops:      2.638e+10
+

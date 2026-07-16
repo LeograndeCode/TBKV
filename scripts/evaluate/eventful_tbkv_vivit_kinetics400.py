@@ -111,7 +111,7 @@ def main():
     spatial_cfg = config["model"].get("spatial_config", {}).get("block_config")
     if spatial_cfg is not None:
         for key in ("token_keep", "merge_iterations", "merge_ratio",
-                    "tbkv_tau", "cache_reuse", "caching"):
+                    "tbkv_tau", "cache_reuse", "caching", "substitute"):
             if key in config:
                 spatial_cfg[key] = config[key]
     # frame_stride is read from config directly by the eval loop; nothing to route.

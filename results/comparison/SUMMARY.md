@@ -20,14 +20,62 @@ Reading:
 - Caching pass (warm-up, 618 GFLOPs/clip) is excluded from the matching FLOPs, on
   the premise it amortises in a streaming deployment.
 
-## ViTDet / ImageNet-VID — 25 videos  (RUNNING, ~3-4 h)
+## ViTDet / ImageNet-VID — 25 videos  (DONE)
 
-| method | mAP | mAP@50 | GFLOPs/frame |
+Eventful and Eventful-TBKV sweep token_top_k = {128,256,384,512,768,1024}, so
+each is a 6-point accuracy/FLOPs curve.
+
+**Fair, apples-to-apples comparison (both matching-frame only, same warm-up
+protocol): Eventful-TBKV `cr=0` (= exact Eventful) vs `cr=0.5` (ours):**
+
+| token_top_k | Eventful cr=0  mAP@50 / GF/frame | Eventful-TBKV cr=0.5  mAP@50 / GF/frame |
+|---|---|---|
+| 128  | 0.786 / 1.7 | 0.655 / 1.1 |
+| 256  | 0.865 / 2.9 | 0.716 / 1.7 |
+| 384  | 0.894 / 4.1 | 0.759 / 2.3 |
+| 512  | 0.903 / 5.3 | 0.769 / 2.9 |
+| 768  | 0.905 / 7.8 | 0.789 / 4.1 |
+| 1024 | 0.905 / 10.2 | 0.762 / 5.3 |
+
+Reference points (WHOLE-STREAM per-frame accounting incl. keyframes — NOT
+matching-only, so not directly comparable to the two columns above):
+- Base (dense ViTDet): mAP@50 0.906, 174.5 GFLOPs/frame
+- MaskVD: mAP@50 0.899, 85.3 GFLOPs/frame
+
+VERDICT (ViTDet): on detection the recompute-set filter is **dominated by
+Eventful** — at matched FLOPs Eventful has higher mAP@50 (e.g. at ~1.7 GF/frame:
+Eventful 0.786 vs ours 0.716), and at matched mAP@50 Eventful is cheaper. The
+~2x FLOP cut TBKV gives (e.g. 7.8->4.1 at k=768) costs ~11 pts mAP@50 (0.905->
+0.789). This is the OPPOSITE of the ViViT result: on classification the class
+token absorbs dropped patch tokens cheaply, but detection needs the spatial
+tokens TBKV drops, so localization degrades. Honest negative result on ViTDet.
+
+## Sweep: cache_reuse x merge_iterations
+
+### ViViT / Kinetics-400 (100 clips). Matching-frame FLOPs.
+
+| cache_reuse | Top-1 | Top-5 | GFLOPs/frame |
 |---|---|---|---|
-| Eventful (temporal_672) | — | — | — |
-| Eventful-TBKV filter `cache_reuse=0` (protocol-matched Eventful) | — | — | — |
-| Eventful-TBKV filter `cache_reuse=0.5` | — | — | — |
-| MaskVD | — | — | — |
+| 0.0 (=Eventful) | 61.0 | 82.0 | 27.2 |
+| 0.25 | 59.0 | 79.0 | 20.6 |
+| 0.50 | 59.0 | 79.0 | 13.9 |
+| 0.75 | 59.0 | 79.0 | 7.2 |
+
+merge_iterations in {2,4,8} gave IDENTICAL results at every cache_reuse (rows
+collapsed above). Two clean findings:
+(1) Accuracy is FLAT at 59.0/79.0 for all cache_reuse >= 0.25 while FLOPs fall
+    27.2 -> 7.2 (3.8x). TBKV drops up to 75% of eventful tokens for a fixed
+    2-point Top-1 cost vs exact Eventful.
+(2) merge_iterations is inert here: once the prototype pool exists, how finely
+    it is compressed does not change which tokens get dropped. The prototypes
+    are robust to merge granularity.
+
+### ViTDet / ImageNet-VID (25 videos, token_top_k=512). Matching-frame FLOPs
+### (counting bug fixed; earlier ViTDet GFLOPs were ~10x undercounted).
+
+| cache_reuse | mAP@50 | GFLOPs/frame |
+|---|---|---|
+| (running) | | |
 
 ## Appendix: motion-compensation variant — robustness thesis REFUTED
 

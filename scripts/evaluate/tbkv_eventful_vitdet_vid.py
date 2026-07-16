@@ -46,6 +46,11 @@ def evaluate_eventful_tbkv_vitdet(device, model, data, config):
     outputs, labels = [], []
     match_frames = 0
 
+    # Count ONCE across the whole run: clear the global accumulator here, then
+    # gate counting per frame (warm-up frames off, matching frames on). Calling
+    # clear_counts() inside the loop would zero every prior video's counts.
+    model.clear_counts()
+
     for _, vid_item in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
         loader = DataLoader(vid_item, batch_size=1)
         model.reset()
@@ -57,15 +62,17 @@ def evaluate_eventful_tbkv_vitdet(device, model, data, config):
             frame = frame.to(device)
             if step == warmup:
                 _set_caching(model, False)   # warm-up done: build cache, start matching
+            # Warm-up FLOPs are invisible (streaming): count matching frames only.
+            if step >= warmup:
+                model.counting()
+            else:
+                model.no_counting()
             with torch.inference_mode():
                 results = model(frame)
             if step >= warmup:
-                # Only matching frames are scored and counted.
                 outputs.extend(results)
                 labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
                 match_frames += 1
-            else:
-                model.clear_counts()   # discard warm-up FLOPs
             step += 1
 
     mean_ap = MeanAveragePrecision()
@@ -80,10 +87,12 @@ def main():
     config = initialize_run(
         config_location=REPO_ROOT / "configs" / "evaluate" / "vitdet_vid"
     )
-    # Route cache_reuse override into the block config.
+    # Route TBKV overrides into the block config.
     bc = config["model"].get("backbone_config", {}).get("block_config")
-    if bc is not None and "cache_reuse" in config:
-        bc["cache_reuse"] = config["cache_reuse"]
+    if bc is not None:
+        for key in ("cache_reuse", "merge_iterations", "merge_ratio", "substitute"):
+            if key in config:
+                bc[key] = config[key]
 
     detectron_cfg = Path(config["model"]["detectron2_config"])
     if not detectron_cfg.is_absolute():

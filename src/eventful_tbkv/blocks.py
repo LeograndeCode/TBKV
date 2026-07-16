@@ -19,6 +19,7 @@ the same one MaskVD+TBKV uses.
 """
 
 import torch
+import torch.nn.functional as F
 
 from src.core.blocks import EventfulBlock, EventfulTokenwiseBlock
 from src.tbkv.tbkv_utils import compute_merge
@@ -34,16 +35,26 @@ class _EventfulTBKVMixin:
     """Adds the TBKV recompute-set filter to an Eventful block. Mix in FIRST."""
 
     def __init__(self, cache_reuse=0.5, merge_iterations=4, merge_ratio=0.5,
-                 caching=False, **super_kwargs):
+                 caching=False, substitute=False, **super_kwargs):
         super().__init__(**super_kwargs)
         self.cache_reuse = float(cache_reuse)
         self.merge_iterations = int(merge_iterations)
         self.merge_ratio = float(merge_ratio)
         self.caching = bool(caching)
         self._initial_caching = bool(caching)
+        # substitute=True (KV-space substitution): matched tokens are pushed
+        # BACK into the qkv gate (so their K/V refresh and the class token can
+        # attend to them), but with their qkv-gate input replaced by the cached
+        # merged token they matched. The projection/MLP gates still process only
+        # the kept set, so part of the FLOP saving is retained. Without this the
+        # matched tokens' K/V stay stale and, for a class-token readout (ViViT),
+        # the substitution never reaches the output.
+        self.substitute = bool(substitute)
         self.cache = None
-        self._acc = []
-        self._forced = None
+        self._acc = []          # LN-space eventful tokens (match metric + subst src)
+        self._forced = None      # index for the projection/MLP gates (kept set)
+        self._forced_qkv = None  # index for the qkv gate (kept + matched, when substituting)
+        self._subst = None       # (positions [B, m], cache tokens [B, m, C]) in gate-input space
         self.dbg_proposed = 0
         self.dbg_recomputed = 0
 
@@ -53,6 +64,8 @@ class _EventfulTBKVMixin:
         self.cache = None
         self._acc = []
         self._forced = None
+        self._forced_qkv = None
+        self._subst = None
 
     def _finalize_cache(self):
         if not self._acc:
@@ -63,6 +76,8 @@ class _EventfulTBKVMixin:
         self._acc = []
 
     def _compute_forced_index(self, gin):
+        self._subst = None
+        self._forced_qkv = None
         gate = self.qkv_gate
         if gate.first or self.caching or self.cache is None or self.cache_reuse <= 0:
             return None
@@ -78,7 +93,32 @@ class _EventfulTBKVMixin:
             # tbkv_keep_mask keeps a fixed count per row, so the kept set is
             # uniform-width and can be packed back into an index tensor.
             n_keep = int(keep[0].sum())
-            return cand[keep].reshape(B, n_keep)
+            keep_idx = cand[keep].reshape(B, n_keep)
+            if self.substitute:
+                self._prepare_substitution(cand, feat, keep, n_keep)
+            return keep_idx
+
+    def _prepare_substitution(self, cand, feat, keep, n_keep):
+        """Push matched tokens back into the qkv gate with cache-token input.
+
+        The qkv gate recomputes the kept AND matched tokens (its natural
+        proposal ``cand``), but the matched tokens' gate input is swapped for
+        the cached merged token they best match -- so their K/V reflect the
+        cache. The projection/MLP gates keep using ``keep`` only.
+        """
+        B, k = cand.shape
+        n_match = k - n_keep
+        if n_match <= 0:
+            return
+        matched_pos = cand[~keep].reshape(B, n_match)          # [B, m] seq indices
+        # Best-matching cache token per candidate (same metric as tbkv_keep_mask).
+        sim = F.normalize(feat, dim=-1) @ F.normalize(self.cache.tok, dim=-1).transpose(1, 2)
+        best = sim.argmax(dim=-1)                              # [B, k]
+        matched_cache = best[~keep].reshape(B, n_match)        # [B, m]
+        C = self.cache.tok.shape[-1]
+        src = self.cache.tok.gather(1, matched_cache.unsqueeze(-1).expand(B, n_match, C))
+        self._subst = (matched_pos, src)
+        self._forced_qkv = cand                                # qkv recomputes kept + matched
 
     def forward(self, x):
         if (not self.caching) and self.cache is None and self._acc:
@@ -87,14 +127,26 @@ class _EventfulTBKVMixin:
         self._forced = self._compute_forced_index(gin)
         return super().forward(x)
 
+    def _substitute_gate_input(self, x):
+        """Overwrite matched positions' gate-input features with cache tokens."""
+        if self._subst is None:
+            return x
+        pos, src = self._subst
+        C = x.shape[-1]
+        return x.scatter(-2, pos.unsqueeze(-1).expand(-1, -1, C), src)
+
     def _forward_pre_attention(self, x):
         skip_1 = x
+        # qkv gate gets kept+matched (when substituting); other gates get kept.
+        forced_qkv = self._forced if self._forced_qkv is None else self._forced_qkv
         if self.gate_before_ln:
-            x, index = self.qkv_gate(x, forced_index=self._forced)
+            x = self._substitute_gate_input(x)
+            x, index = self.qkv_gate(x, forced_index=forced_qkv)
             x = self.input_layer_norm(x)
         else:
             x = self.input_layer_norm(x)
-            x, index = self.qkv_gate(x, forced_index=self._forced)
+            x = self._substitute_gate_input(x)
+            x, index = self.qkv_gate(x, forced_index=forced_qkv)
         if self.caching:
             self._acc.append(x.detach())
         x = self.qkv(x)

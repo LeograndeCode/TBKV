@@ -1,0 +1,10 @@
+=== SUBSTITUTION TEST: dropped tokens get prototype instead of stale ===
+## ViViT cr=0.5  substitute=FALSE
+  Top-1 Accuracy   : 59.00%
+  Top-5 Accuracy   : 79.00%
+  GFLOPs/clip      : caching 618 + matching 222 = TOTAL 840
+## ViViT cr=0.5  substitute=TRUE
+  Top-1 Accuracy   : 59.00%
+  Top-5 Accuracy   : 79.00%
+  GFLOPs/clip      : caching 618 + matching 288 = TOTAL 906
+## ViTDet cr=0.25 mi=2  substitute=FALSE

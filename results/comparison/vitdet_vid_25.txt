@@ -43,3 +43,94 @@
     linear_flops:      8.715e+10
     matmul_flops:      2.644e+10
 ## eventful-tbkv filter cache_reuse=0.0 (pure Eventful, warmup protocol)
+    map:               0.5344
+    map_50:            0.7864
+    add_flops:         3.541e+07
+    bias_flops:        9.424e+05
+    einsum_flops:      6.734e+07
+    linear_flops:      9.65e+08
+    matmul_flops:      6.234e+08
+    map:               0.6269
+    map_50:            0.8647
+    add_flops:         3.541e+07
+    bias_flops:        1.885e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      1.93e+09
+    matmul_flops:      8.697e+08
+    map:               0.6623
+    map_50:            0.8943
+    add_flops:         3.541e+07
+    bias_flops:        2.827e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      2.895e+09
+    matmul_flops:      1.116e+09
+    map:               0.681
+    map_50:            0.9026
+    add_flops:         3.541e+07
+    bias_flops:        3.77e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      3.86e+09
+    matmul_flops:      1.362e+09
+    map:               0.691
+    map_50:            0.9054
+    add_flops:         3.541e+07
+    bias_flops:        5.654e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      5.79e+09
+    matmul_flops:      1.855e+09
+    map:               0.6948
+    map_50:            0.9055
+    add_flops:         3.541e+07
+    bias_flops:        7.539e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      7.72e+09
+    matmul_flops:      2.347e+09
+## eventful-tbkv filter cache_reuse=0.5
+    map:               0.3885
+    map_50:            0.6551
+    add_flops:         3.541e+07
+    bias_flops:        4.712e+05
+    einsum_flops:      6.734e+07
+    linear_flops:      4.825e+08
+    matmul_flops:      5.003e+08
+    map:               0.4719
+    map_50:            0.7162
+    add_flops:         3.541e+07
+    bias_flops:        9.424e+05
+    einsum_flops:      6.734e+07
+    linear_flops:      9.65e+08
+    matmul_flops:      6.234e+08
+    map:               0.5083
+    map_50:            0.7593
+    add_flops:         3.541e+07
+    bias_flops:        1.414e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      1.448e+09
+    matmul_flops:      7.465e+08
+    map:               0.5239
+    map_50:            0.7687
+    add_flops:         3.541e+07
+    bias_flops:        1.885e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      1.93e+09
+    matmul_flops:      8.697e+08
+    map:               0.5494
+    map_50:            0.7887
+    add_flops:         3.541e+07
+    bias_flops:        2.827e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      2.895e+09
+    matmul_flops:      1.116e+09
+    map:               0.5338
+    map_50:            0.762
+    add_flops:         3.541e+07
+    bias_flops:        3.77e+06
+    einsum_flops:      6.734e+07
+    linear_flops:      3.86e+09
+    matmul_flops:      1.362e+09
+## maskvd
+mAP@50:          0.8994
+mAP:             0.6896
+Avg sparsity:    0.594  (fraction of tokens SKIPPED per frame)
+GFLOPs/frame:    85.343
+DONE-VITDET

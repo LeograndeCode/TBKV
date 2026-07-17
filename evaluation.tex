@@ -1,0 +1,393 @@
+% =========================================================================
+% Evaluation - TempoMem (revised after AAAI-style self-review)
+% Requires: booktabs. Tables use \resizebox{\columnwidth}{!}{...} where
+% they would otherwise overflow the AAAI column (needs graphicx).
+%
+% Placeholders for numbers not yet measured are marked [TBD]. Search for
+% "TBD" before submission.
+% =========================================================================
+
+\section{Evaluation}
+\label{sec:eval}
+
+We evaluate TempoMem on two video transformer regimes: action recognition
+with ViViT-B on Kinetics-400, where the prediction is read from a class
+token, and video object detection with ViTDet-B on ImageNet VID, where the
+prediction depends on the full spatial token grid. The two regimes stress
+the method in opposite ways, and we report both the positive and the
+negative findings: content-based reuse is highly effective for class-token
+readouts and is currently dominated by per-position gating on dense spatial
+prediction. The section ``When Does Content-Based Reuse Help?'' analyzes
+why.
+
+\subsection{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Models and datasets.}
+For action recognition we use ViViT-B \cite{vivit} (factorized
+spatio-temporal attention, 16-frame clips at $224 \times 224$, tubelet
+$2 \times 16 \times 16$, class-token readout) on Kinetics-400 \cite{k400}.
+For detection we use ViTDet-B \cite{vitdet} on ImageNet VID at
+$672 \times 672$; its windowed attention with relative-position biases
+means TempoMem runs in the KV-reuse-only variant on windowed blocks, as
+described in the Methodology. For backbone-scaling experiments we
+additionally use VideoMAE \cite{videomae} with ViT-S/B/L/H encoders on
+Kinetics-400 and UCF101 \cite{ucf101}. All weights are frozen, pretrained
+checkpoints; TempoMem and every compared method are applied as
+training-free, inference-time modifications, which isolates the effect of
+the reuse mechanism itself.
+
+\paragraph{Baselines.}
+\emph{Dense} is the unmodified backbone. \emph{Eventful}
+\cite{eventful} recomputes the top-$k$ most-changed tokens per frame and
+reuses buffered results for the rest; $k$ is its compute budget.
+\emph{STGT} \cite{stgt} is a spatio-temporal token-gating baseline.
+\emph{MaskVD} \cite{maskvd} skips background tokens using detection masks.
+\emph{ToMe} \cite{tome} is a single-frame token-merging method that we also
+compose with TempoMem on foreground tokens.
+
+\paragraph{Metrics.}
+Kinetics-400 and UCF101 report Top-1 and Top-5 accuracy; ImageNet VID
+reports mAP@50. Compute is reported as GFLOPs, measured with in-code
+operation counters (instrumented linear and matmul modules) rather than
+analytic estimates, so all reductions reflect the operations actually
+executed, including matching overhead. Latency is CUDA-event wall-clock
+time per frame and memory is peak GPU allocation, both on a single NVIDIA
+Quadro RTX 6000 (24\,GB) under a shared warm-up and reset protocol.
+
+\paragraph{Protocol and cost accounting.}
+Each video runs the TempoMem pipeline: the first $W$ frames are caching
+frames ($W = 4$ for ViTDet, the leading frames of each clip for ViViT),
+and all later frames are matching frames. Unless a table says otherwise,
+accuracy and GFLOPs are computed \emph{on matching frames only}, for every
+method, with baselines evaluated on the same frames; this is the
+steady-state accounting defined in the Methodology, and warm-up cost is
+reported separately where relevant. Whole-stream numbers (all frames,
+warm-up included) are labeled explicitly, and \textbf{we never compare a
+matching-only number against a whole-stream number in the same table}.
+
+\subsection{Standalone TempoMem}
+\label{sec:eval-standalone}
+
+Table~\ref{tab:standalone-vivit} evaluates standalone TempoMem
+(saliency-split background caching, KV reuse, and token substitution) on
+ViViT-B/Kinetics-400. TempoMem removes 27\% of FLOPs with no Top-1 loss;
+composing ToMe on the foreground pushes the reduction to 71\% at a
+7.3-point Top-1 cost, showing that the two mechanisms stack but that
+aggressive foreground reduction is where accuracy is spent. The Top-5 drop
+under substitution (97 to 87) indicates that prototype substitution
+perturbs the tail of the logit distribution more than its mode.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Method & GFLOPs & Top-1 (\%) & Top-5 (\%) \\
+\midrule
+ViViT-B (dense) & 537.6 & 71.0 & 97.0 \\
++ TempoMem & 392.0 ($-$27\%) & 71.0 & 87.0 \\
++ TempoMem + ToMe & 155.4 ($-$71\%) & 63.7 & 78.0 \\
+\bottomrule
+\end{tabular}
+\caption{Standalone TempoMem on ViViT-B / Kinetics-400 (per-clip GFLOPs,
+matching frames scored). TempoMem alone preserves Top-1 exactly at a 27\%
+FLOPs reduction; adding ToMe on foreground tokens trades accuracy for a
+much deeper reduction.}
+\label{tab:standalone-vivit}
+\end{table}
+
+\paragraph{Backbone scaling.}
+Table~\ref{tab:scaling} applies standalone TempoMem to VideoMAE encoders
+from ViT-S to ViT-H on Kinetics-400. The relative saving grows with model
+size, from 49\% on ViT-S to 86\% on ViT-H, at an accuracy cost between 0.8
+and 1.2 points. The reason is
+structural: the matching overhead grows as $N_b M C$ while the skipped
+projections grow as $r N_b C^2$, so the break-even margin of
+Eq.~\ref{eq:breakeven} widens with $C$. Practically, ViT-L with TempoMem
+runs at the FLOPs of a dense ViT-S while keeping a 1.8-point Top-1
+advantage over it. On UCF101, the same configuration reduces VideoMAE-B
+from 156.3 to 86.0 GFLOPs ($-$45\%) with unchanged accuracy (93.4\% vs.\
+93.5\%).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llcc}
+\toprule
+Backbone & Method & GFLOPs & Top-1 (\%) \\
+\midrule
+ViT-S & dense & 269.2 & 90.5 \\
+      & + TempoMem & 137.8 ($-$49\%) & 89.7 \\
+\midrule
+ViT-B & dense & 502.9 & 91.0 \\
+      & + TempoMem & 96.4 ($-$81\%) & 89.8 \\
+\midrule
+ViT-L & dense & 1459.3 & 93.3 \\
+      & + TempoMem & 229.3 ($-$84\%) & 92.3 \\
+\midrule
+ViT-H & dense & 2895.0 & 94.0 \\
+      & + TempoMem & 412.0 ($-$86\%) & 93.1 \\
+\bottomrule
+\end{tabular}
+\caption{Backbone scaling of standalone TempoMem (VideoMAE encoders,
+Kinetics-400, per-clip GFLOPs). The relative saving grows with model
+capacity, consistent with the break-even analysis: larger $C$ makes
+matching cheaper relative to the projections it replaces.}
+\label{tab:scaling}
+\end{table}
+
+\subsection{TempoMem on Eventful Transformers}
+\label{sec:eval-eventful}
+
+We now apply TempoMem as a recompute-set filter on top of Eventful
+(Algorithm~\ref{alg:eventfultm}): Eventful's qkv gate proposes its top-$k$
+changed tokens, and TempoMem drops the fraction $\gamma$ of them that best
+match the prototype cache. With $\gamma = 0$ the pipeline is exactly
+Eventful under our protocol, which gives a perfectly controlled comparison:
+every row of Table~\ref{tab:eventful-vivit} differs from the first row
+only in $\gamma$.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+$\gamma$ & Top-1 (\%) & Top-5 (\%) & GFLOPs/frame \\
+\midrule
+0.00 (= Eventful) & 61.0 & 82.0 & 27.2 \\
+0.25 & 59.0 & 79.0 & 20.6 \\
+0.50 & 59.0 & 79.0 & 13.9 \\
+0.75 & 59.0 & 79.0 & \textbf{7.2} \\
+\bottomrule
+\end{tabular}
+\caption{Eventful + TempoMem on ViViT-B / Kinetics-400 (matching-frame
+accounting for all rows). Accuracy is flat for all
+$\gamma \ge 0.25$ while compute falls $3.8\times$: TempoMem can discard up
+to 75\% of Eventful's recompute set for a fixed 2-point Top-1 cost.
+Whole-clip reference points under the same setting: dense 73.0\% Top-1 at
+3355 GFLOPs/clip; canonical Eventful 71.0\% at 613 GFLOPs/clip (not
+comparable to the matching-only rows above).}
+\label{tab:eventful-vivit}
+\end{table}
+
+\paragraph{Reading the accuracy-compute curve
+(Fig.~\ref{fig:eventful-curve}).}
+Figure~\ref{fig:eventful-curve} plots Top-1 against matching-frame
+GFLOPs as $\gamma$ sweeps from 0 to 0.75. Two properties matter. First,
+the curve is a step, not a slope: the entire accuracy cost (2 points) is
+paid at the smallest nonzero $\gamma$, after which accuracy is exactly flat
+at 59.0/79.0 while compute falls from 20.6 to 7.2 GFLOPs/frame. This says
+the tokens TempoMem drops beyond the first quartile were genuinely
+redundant: Eventful flagged them as changed, but the change was already
+represented in the prototype cache. Second, the step localizes the damage:
+the loss comes from the first tranche of dropped tokens (those nearest the
+matching threshold), suggesting an adaptive $\gamma$ could recover it.
+Prototype granularity is irrelevant here: merge schedules of $T \in
+\{2,4,8\}$ passes produced identical Top-1, Top-5, and FLOPs at every
+$\gamma$, so on classification the filter is robust to how finely the cache
+is compressed.
+
+\begin{figure}[t]
+\centering
+% [TBD] Insert plot: x = matching-frame GFLOPs/frame, y = Top-1 (%),
+% one curve for Eventful+TempoMem (gamma sweep, gamma=0 endpoint is exact
+% Eventful), horizontal reference line for dense Top-1 under the same
+% matching-frame protocol. Source: results/comparison/plot_vivit_runs.log
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}
+\textbf{[TBD: accuracy vs.\ compute curve]}\vspace{2em}}}
+\caption{Top-1 accuracy vs.\ matching-frame GFLOPs for Eventful + TempoMem
+on ViViT-B / Kinetics-400 as the reuse fraction $\gamma$ increases (left to
+right: $\gamma = 0.75, 0.5, 0.25, 0$). Accuracy is flat for all
+$\gamma \ge 0.25$; the full accuracy cost is paid at the first step.}
+\label{fig:eventful-curve}
+\end{figure}
+
+\subsection{Comparison with the State of the Art on ImageNet VID}
+\label{sec:eval-vid}
+
+\paragraph{Controlled comparison.}
+The apples-to-apples evidence is Table~\ref{tab:vitdet-sweep}: Eventful and
+Eventful + TempoMem under the identical matching-frame protocol, differing
+only in $\gamma$ (Eventful budget $k = 512$). Unlike classification,
+detection accuracy falls monotonically with $\gamma$ (90.3\% to 59.3\%
+mAP@50) as compute falls from 60.3 to 19.3 GFLOPs/frame; at $\gamma = 0.5$,
+halving Eventful's compute costs 13 mAP points. Sweeping the Eventful
+budget $k \in \{128, \dots, 1024\}$ shows the same picture along the whole
+curve: at matched compute, Eventful reaches higher mAP@50 than Eventful +
+TempoMem, and at matched mAP@50 Eventful is cheaper. \textbf{On detection,
+the recompute-set filter does not sit on Eventful's Pareto front}; we
+report this negative result rather than tuning around it, and analyze its
+cause below.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+$\gamma$ & merge passes $T$ & mAP@50 (\%) & GFLOPs/frame \\
+\midrule
+0.00 (= Eventful) & -- & 90.3 & 60.3 \\
+0.25 & 2 & 86.9 & 46.6 \\
+0.25 & 4 & 86.4 & 46.6 \\
+0.25 & 8 & 85.2 & 46.6 \\
+0.50 & 2 & 77.8 & 32.9 \\
+0.50 & 4 & 76.9 & 32.9 \\
+0.50 & 8 & 74.7 & 32.9 \\
+0.75 & 2 & 59.3 & 19.3 \\
+\bottomrule
+\end{tabular}
+\caption{Eventful + TempoMem on ViTDet-B / ImageNet VID
+($k = 512$, matching-frame accounting for all rows). Detection accuracy
+falls monotonically with the reuse fraction $\gamma$, and coarser
+prototypes (more merge passes) hurt, the opposite of the classification
+result.}
+\label{tab:vitdet-sweep}
+\end{table}
+
+\paragraph{Reference frontier.}
+Table~\ref{tab:vitdet-sota} places the compared methods under whole-stream
+per-frame accounting (all frames, warm-up included), together with their
+measured latency and peak memory. Eventful and STGT define the current
+frontier; MaskVD follows. The Eventful + TempoMem row requires a
+whole-stream re-measurement and is marked \textbf{[TBD]}; from the
+matching-only evidence above we expect it below the Eventful frontier on
+this task.
+
+\begin{table}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Method & GFLOPs/fr. & Latency (ms) & Mem.\ (MB) & mAP@50 (\%) \\
+\midrule
+ViTDet-B (dense) & 174.5 & 69.6 & 760 & 84.1 \\
+Eventful & 60.5 & 58.3 & 2118 & 84.0 \\
+STGT & 68.5 & 56.2 & 1242 & 83.8 \\
+MaskVD & 88.8 & 56.0 & 927 & 83.1 \\
+TempoMem (standalone) & 156.5 & 101.8 & 929 & 72.0 \\
+Eventful + TempoMem & \textbf{[TBD]} & \textbf{[TBD]} & \textbf{[TBD]} &
+  \textbf{[TBD]} \\
+\bottomrule
+\end{tabular}}
+\caption{ImageNet VID comparison with the state of the art under
+whole-stream per-frame accounting and an identical GPU timing protocol.
+All rows share the same accounting; the matching-only numbers of
+Table~\ref{tab:vitdet-sweep} are not comparable to these and are therefore
+kept separate.}
+\label{tab:vitdet-sota}
+\end{table}
+
+\subsection{When Does Content-Based Reuse Help?}
+\label{sec:eval-analysis}
+
+The ViViT and ViTDet results are opposite, and the contrast is the most
+informative finding of this evaluation. On classification, the prediction
+is read from a class token that aggregates the sequence; replacing a
+redundant patch token with a nearby prototype changes what the class token
+attends to only marginally, so accuracy is flat while 75\% of the
+recompute set is dropped (Table~\ref{tab:eventful-vivit}). On detection,
+the prediction is read from the spatial tokens themselves; every dropped
+or substituted token is a location the detector can no longer describe
+exactly, so mAP@50 falls in proportion to the reuse rate
+(Table~\ref{tab:vitdet-sweep}). Two secondary observations support this
+reading. First, prototype granularity is inert on classification but
+matters on detection, where fewer merge passes (finer prototypes, hence
+smaller substitution error per token) are consistently better. Second,
+the standalone results follow the same rule: the strongest standalone
+numbers come from classification backbones with class-token or pooled
+readouts (Tables~\ref{tab:standalone-vivit} and~\ref{tab:scaling}).
+TempoMem is therefore best positioned as an accelerator for
+classification-style, global-readout video inference, and as a research
+direction, rather than a finished method, for dense spatial prediction.
+
+\subsection{Deployment Cost: Latency and Memory}
+\label{sec:eval-deploy}
+
+FLOPs do not automatically become speed, and we report this honestly.
+Table~\ref{tab:vitdet-sota} includes measured wall-clock latency and peak
+memory on ImageNet VID. The gated baselines translate their FLOPs savings
+into
+real speedups (56 to 58\,ms vs.\ 69.6\,ms dense). Standalone TempoMem does
+not yet: matching and cache management add overhead that outweighs the
+saved projections in the current implementation (101.8\,ms), although its
+memory footprint (929\,MB) stays close to dense and far below Eventful's
+buffers (2118\,MB), reflecting the merged cache of
+Proposition~\ref{prop:cachesize}. The gap is implementation-level, not
+algorithmic: the matching product and gather/scatter steps are unfused
+kernels. Profiling and fused implementations are future work; latency for
+the Eventful + TempoMem filter is \textbf{[TBD]}.
+
+\subsection{Ablations}
+\label{sec:eval-ablations}
+
+\paragraph{Reuse fraction $\gamma$.}
+Covered by Tables~\ref{tab:eventful-vivit} and~\ref{tab:vitdet-sweep}:
+a flat step on classification, a monotonic trade on detection.
+
+\paragraph{Prototype granularity ($T$ merge passes).}
+On ViViT, $T \in \{2,4,8\}$ is fully inert: identical accuracy and FLOPs
+at every $\gamma$. On ViTDet, accuracy degrades with $T$ at every $\gamma$
+(e.g., 77.8\% vs.\ 74.7\% mAP@50 at $\gamma = 0.5$), so detection prefers
+the
+finest prototypes the memory budget allows. This is direct evidence that
+classification tolerates coarse summaries while detection consumes the
+per-token detail that merging removes.
+
+\paragraph{Does content matching help without dropping tokens?}
+We also tested a motion-compensated variant that matches stale tokens by
+content but never drops them, hypothesizing robustness to large frame
+strides. It is refuted: across strides $\{1, 4, 8, 16\}$ on ImageNet VID,
+Eventful and the variant degrade identically (differences $\le 0.6$
+mAP@50 points, within noise; e.g., 62.9\% vs.\ 62.3\% at stride 8). The
+value of the prototype cache lies in \emph{removing} compute, not in
+improving the reference features, which motivated the recompute-set filter
+as the surviving design.
+
+\paragraph{Warm-up length $W$ and refresh period $P$.}
+\textbf{[TBD]}: sweeps over $W$ and $P$ (including scene-cut stress tests)
+are planned; the Methodology's failure-mode analysis predicts $P$ to be
+the dominant accuracy knob after $r$.
+
+\subsection{Summary of Findings}
+\label{sec:eval-summary}
+
+(1)~Standalone TempoMem preserves Top-1 exactly at a 27\% FLOPs reduction
+on ViViT and scales with backbone size, reaching 86\% reduction on ViT-H
+at a 0.9-point cost; a ViT-L with TempoMem costs less than a dense ViT-S.
+(2)~As a filter on Eventful, TempoMem drops up to 75\% of the recompute
+set on Kinetics-400 for a fixed 2-point Top-1 cost, cutting matching-frame
+compute $3.8\times$ below Eventful itself. (3)~On detection, the same
+filter is dominated by Eventful: dense spatial readouts consume exactly
+the per-token information that prototype substitution removes, an honest
+negative result that scopes the method to global-readout tasks.
+(4)~FLOPs savings do not yet translate into latency; memory stays near
+dense. Whole-stream measurements for the filter and the $W$/$P$ sweeps
+are marked \textbf{[TBD]} throughout.
+
+% ------------------------------------------------------------------
+% Additional bib entries used by this section:
+% @inproceedings{vivit,   title={ViViT: A Video Vision Transformer},
+%   author={Arnab, Anurag and Dehghani, Mostafa and Heigold, Georg and
+%           Sun, Chen and Lu{\v{c}}i{\'c}, Mario and Schmid, Cordelia},
+%   booktitle={ICCV}, year={2021}}
+% @inproceedings{vitdet,  title={Exploring Plain Vision Transformer
+%   Backbones for Object Detection},
+%   author={Li, Yanghao and Mao, Hanzi and Girshick, Ross and He, Kaiming},
+%   booktitle={ECCV}, year={2022}}
+% @inproceedings{videomae, title={VideoMAE: Masked Autoencoders are
+%   Data-Efficient Learners for Self-Supervised Video Pre-Training},
+%   author={Tong, Zhan and Song, Yibing and Wang, Jue and Wang, Limin},
+%   booktitle={NeurIPS}, year={2022}}
+% @article{k400, title={The Kinetics Human Action Video Dataset},
+%   author={Kay, Will and others}, journal={arXiv:1705.06950}, year={2017}}
+% @article{ucf101, title={UCF101: A Dataset of 101 Human Actions Classes
+%   From Videos in The Wild}, author={Soomro, Khurram and Zamir, Amir
+%   Roshan and Shah, Mubarak}, journal={arXiv:1212.0402}, year={2012}}
+% @inproceedings{maskvd, title={MaskVD: Region Masking for Efficient Video
+%   Object Detection}, author={Sarkar, Sreetama and others},
+%   year={2024}, booktitle={arXiv:2407.12067}}
+% @article{stgt, title={Spatio-Temporal Gated Transformers for Efficient
+%   Video Processing}, author={Habibian, Amir and others}, year={2021},
+%   journal={NeurIPS Workshops}}
+% ------------------------------------------------------------------

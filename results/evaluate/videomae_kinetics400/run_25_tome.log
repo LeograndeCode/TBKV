@@ -1,0 +1,161 @@
+Device: cuda
+Kinetics-400 val: 19877 videos, using first 25
+
+============================================================
+ToMe r=0 (baseline)
+============================================================
+  [baseline] video 1/25 top1=100.00% top5=100.00%
+  [baseline] video 2/25 top1=100.00% top5=100.00%
+  [baseline] video 3/25 top1=100.00% top5=100.00%
+  [baseline] video 4/25 top1=100.00% top5=100.00%
+  [baseline] video 5/25 top1=100.00% top5=100.00%
+  [baseline] video 6/25 top1=83.33% top5=100.00%
+  [baseline] video 7/25 top1=85.71% top5=100.00%
+  [baseline] video 8/25 top1=87.50% top5=100.00%
+  [baseline] video 9/25 top1=77.78% top5=100.00%
+  [baseline] video 10/25 top1=80.00% top5=100.00%
+  [baseline] video 11/25 top1=81.82% top5=100.00%
+  [baseline] video 12/25 top1=83.33% top5=100.00%
+  [baseline] video 13/25 top1=84.62% top5=100.00%
+  [baseline] video 14/25 top1=78.57% top5=92.86%
+  [baseline] video 15/25 top1=80.00% top5=93.33%
+  [baseline] video 16/25 top1=81.25% top5=93.75%
+  [baseline] video 17/25 top1=82.35% top5=94.12%
+  [baseline] video 18/25 top1=83.33% top5=94.44%
+  [baseline] video 19/25 top1=84.21% top5=94.74%
+  [baseline] video 20/25 top1=85.00% top5=95.00%
+  [baseline] video 21/25 top1=85.71% top5=95.24%
+  [baseline] video 22/25 top1=81.82% top5=90.91%
+  [baseline] video 23/25 top1=82.61% top5=91.30%
+  [baseline] video 24/25 top1=83.33% top5=91.67%
+  [baseline] video 25/25 top1=84.00% top5=92.00%
+
+============================================================
+ToMe r=33, prop_attn=False
+============================================================
+  [tome r=33] video 1/25 top1=100.00% top5=100.00%
+  [tome r=33] video 2/25 top1=100.00% top5=100.00%
+  [tome r=33] video 3/25 top1=100.00% top5=100.00%
+  [tome r=33] video 4/25 top1=100.00% top5=100.00%
+  [tome r=33] video 5/25 top1=100.00% top5=100.00%
+  [tome r=33] video 6/25 top1=83.33% top5=100.00%
+  [tome r=33] video 7/25 top1=85.71% top5=100.00%
+  [tome r=33] video 8/25 top1=87.50% top5=100.00%
+  [tome r=33] video 9/25 top1=77.78% top5=100.00%
+  [tome r=33] video 10/25 top1=80.00% top5=100.00%
+  [tome r=33] video 11/25 top1=81.82% top5=100.00%
+  [tome r=33] video 12/25 top1=83.33% top5=100.00%
+  [tome r=33] video 13/25 top1=84.62% top5=100.00%
+  [tome r=33] video 14/25 top1=78.57% top5=92.86%
+  [tome r=33] video 15/25 top1=80.00% top5=93.33%
+  [tome r=33] video 16/25 top1=81.25% top5=93.75%
+  [tome r=33] video 17/25 top1=82.35% top5=94.12%
+  [tome r=33] video 18/25 top1=83.33% top5=94.44%
+  [tome r=33] video 19/25 top1=84.21% top5=94.74%
+  [tome r=33] video 20/25 top1=85.00% top5=95.00%
+  [tome r=33] video 21/25 top1=85.71% top5=95.24%
+  [tome r=33] video 22/25 top1=81.82% top5=95.45%
+  [tome r=33] video 23/25 top1=82.61% top5=95.65%
+  [tome r=33] video 24/25 top1=83.33% top5=95.83%
+  [tome r=33] video 25/25 top1=84.00% top5=96.00%
+
+============================================================
+ToMe r=65, prop_attn=False
+============================================================
+  [tome r=65] video 1/25 top1=100.00% top5=100.00%
+  [tome r=65] video 2/25 top1=100.00% top5=100.00%
+  [tome r=65] video 3/25 top1=100.00% top5=100.00%
+  [tome r=65] video 4/25 top1=100.00% top5=100.00%
+  [tome r=65] video 5/25 top1=100.00% top5=100.00%
+  [tome r=65] video 6/25 top1=83.33% top5=100.00%
+  [tome r=65] video 7/25 top1=85.71% top5=100.00%
+  [tome r=65] video 8/25 top1=87.50% top5=100.00%
+  [tome r=65] video 9/25 top1=77.78% top5=100.00%
+  [tome r=65] video 10/25 top1=80.00% top5=100.00%
+  [tome r=65] video 11/25 top1=81.82% top5=100.00%
+  [tome r=65] video 12/25 top1=83.33% top5=100.00%
+  [tome r=65] video 13/25 top1=84.62% top5=100.00%
+  [tome r=65] video 14/25 top1=78.57% top5=92.86%
+  [tome r=65] video 15/25 top1=80.00% top5=93.33%
+  [tome r=65] video 16/25 top1=81.25% top5=93.75%
+  [tome r=65] video 17/25 top1=82.35% top5=94.12%
+  [tome r=65] video 18/25 top1=83.33% top5=94.44%
+  [tome r=65] video 19/25 top1=84.21% top5=94.74%
+  [tome r=65] video 20/25 top1=85.00% top5=95.00%
+  [tome r=65] video 21/25 top1=85.71% top5=95.24%
+  [tome r=65] video 22/25 top1=81.82% top5=95.45%
+  [tome r=65] video 23/25 top1=82.61% top5=95.65%
+  [tome r=65] video 24/25 top1=83.33% top5=95.83%
+  [tome r=65] video 25/25 top1=84.00% top5=96.00%
+
+============================================================
+ToMe r=98, prop_attn=False
+============================================================
+  [tome r=98] video 1/25 top1=100.00% top5=100.00%
+  [tome r=98] video 2/25 top1=100.00% top5=100.00%
+  [tome r=98] video 3/25 top1=100.00% top5=100.00%
+  [tome r=98] video 4/25 top1=100.00% top5=100.00%
+  [tome r=98] video 5/25 top1=100.00% top5=100.00%
+  [tome r=98] video 6/25 top1=83.33% top5=100.00%
+  [tome r=98] video 7/25 top1=85.71% top5=100.00%
+  [tome r=98] video 8/25 top1=87.50% top5=100.00%
+  [tome r=98] video 9/25 top1=88.89% top5=100.00%
+  [tome r=98] video 10/25 top1=90.00% top5=100.00%
+  [tome r=98] video 11/25 top1=90.91% top5=100.00%
+  [tome r=98] video 12/25 top1=91.67% top5=100.00%
+  [tome r=98] video 13/25 top1=92.31% top5=100.00%
+  [tome r=98] video 14/25 top1=85.71% top5=92.86%
+  [tome r=98] video 15/25 top1=86.67% top5=93.33%
+  [tome r=98] video 16/25 top1=87.50% top5=93.75%
+  [tome r=98] video 17/25 top1=88.24% top5=94.12%
+  [tome r=98] video 18/25 top1=88.89% top5=94.44%
+  [tome r=98] video 19/25 top1=89.47% top5=94.74%
+  [tome r=98] video 20/25 top1=90.00% top5=95.00%
+  [tome r=98] video 21/25 top1=90.48% top5=95.24%
+  [tome r=98] video 22/25 top1=90.91% top5=95.45%
+  [tome r=98] video 23/25 top1=91.30% top5=95.65%
+  [tome r=98] video 24/25 top1=87.50% top5=95.83%
+  [tome r=98] video 25/25 top1=88.00% top5=96.00%
+
+============================================================
+ToMe r=130, prop_attn=False
+============================================================
+  [tome r=130] video 1/25 top1=100.00% top5=100.00%
+  [tome r=130] video 2/25 top1=100.00% top5=100.00%
+  [tome r=130] video 3/25 top1=100.00% top5=100.00%
+  [tome r=130] video 4/25 top1=100.00% top5=100.00%
+  [tome r=130] video 5/25 top1=100.00% top5=100.00%
+  [tome r=130] video 6/25 top1=83.33% top5=100.00%
+  [tome r=130] video 7/25 top1=85.71% top5=100.00%
+  [tome r=130] video 8/25 top1=87.50% top5=100.00%
+  [tome r=130] video 9/25 top1=77.78% top5=100.00%
+  [tome r=130] video 10/25 top1=80.00% top5=100.00%
+  [tome r=130] video 11/25 top1=81.82% top5=100.00%
+  [tome r=130] video 12/25 top1=83.33% top5=100.00%
+  [tome r=130] video 13/25 top1=84.62% top5=100.00%
+  [tome r=130] video 14/25 top1=78.57% top5=92.86%
+  [tome r=130] video 15/25 top1=80.00% top5=93.33%
+  [tome r=130] video 16/25 top1=81.25% top5=93.75%
+  [tome r=130] video 17/25 top1=82.35% top5=94.12%
+  [tome r=130] video 18/25 top1=83.33% top5=94.44%
+  [tome r=130] video 19/25 top1=84.21% top5=94.74%
+  [tome r=130] video 20/25 top1=85.00% top5=95.00%
+  [tome r=130] video 21/25 top1=85.71% top5=95.24%
+  [tome r=130] video 22/25 top1=81.82% top5=95.45%
+  [tome r=130] video 23/25 top1=82.61% top5=95.65%
+  [tome r=130] video 24/25 top1=83.33% top5=95.83%
+  [tome r=130] video 25/25 top1=84.00% top5=96.00%
+
+============================================================
+SUMMARY
+============================================================
+Videos: 25 | clips/video: 2 x 16 frames | prop_attn: False
+
+     r     top1     top5  GFLOPs/clip  reduction
+     0   84.00%   92.00%       180.51       0.0%
+    33   84.00%   96.00%       153.56      14.9%
+    65   84.00%   96.00%       129.04      28.5%
+    98   88.00%   96.00%       105.42      41.6%
+   130   84.00%   96.00%        84.43      53.2%
+
+Results saved to results/evaluate/videomae_kinetics400/tome-n_items=25-clips=2-r=0,33,65,98,130/

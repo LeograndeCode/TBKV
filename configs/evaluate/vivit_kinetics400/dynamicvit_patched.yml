@@ -1,8 +1,0 @@
-_defaults:
-  - "_base.yml"
-vanilla: true
-weights: "weights/vivit_b_kinetics400.pth"
-model_impl: "dynamicvit"
-model:
-  dynamicvit_keep_ratio: 0.7      # kept per pruning stage (compounds)
-  dynamicvit_prune_layers: [3, 6, 9]

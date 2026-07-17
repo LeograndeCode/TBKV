@@ -37,14 +37,55 @@ def _set_caching(model, flag):
         b.caching = flag
 
 
+def _clear_caches(model):
+    """Drop each block's content cache so the next caching frame rebuilds it.
+
+    _finalize_cache() only fires when cache is None, so a periodic-refresh
+    frame must clear the stale cache (and any leftover accumulator) first.
+    """
+    for b in _tbkv_blocks(model):
+        if hasattr(b, "cache"):
+            b.cache = None
+        if hasattr(b, "_acc"):
+            b._acc = []
+
+
 def evaluate_eventful_tbkv_vitdet(device, model, data, config):
     model.counting(); model.clear_counts()
     warmup = int(config.get("warmup", 4))
     frame_stride = int(config.get("frame_stride", 1))
     n_items = config.get("n_items", len(data))
+    # Optional extensions (all default-off, preserving the original protocol):
+    # cache_period: re-enter caching mode for one frame every P matching frames
+    #   (the paper's periodic refresh). Refresh frames are scored but excluded
+    #   from the matching-frame FLOPs average, like warm-up frames.
+    # whole_stream: count and score ALL frames (warm-up/refresh included) and
+    #   average FLOPs over all of them (the SOTA-table accounting).
+    # measure_latency: CUDA-event wall-clock and peak memory per frame, under
+    #   the same warm-up harness as scripts/evaluate/tbkv_vitdet_vid.py.
+    cache_period = config.get("cache_period", None)
+    whole_stream = bool(config.get("whole_stream", False))
+    measure_latency = bool(config.get("measure_latency", False))
 
     outputs, labels = [], []
     match_frames = 0
+    total_frames = 0
+    refresh_frames = 0
+    latency = memory = 0.0
+    timed = 0
+
+    cuda_timing = measure_latency and torch.cuda.is_available()
+    if cuda_timing:
+        starter = torch.cuda.Event(enable_timing=True)
+        ender = torch.cuda.Event(enable_timing=True)
+        # GPU warm-up pass so the first timed frame is not paying init costs.
+        warm_loader = DataLoader(data[0], batch_size=1)
+        model.reset()
+        _set_caching(model, False)
+        for frame, _ in warm_loader:
+            with torch.inference_mode():
+                model(frame.to(device))
+            break
 
     # Count ONCE across the whole run: clear the global accumulator here, then
     # gate counting per frame (warm-up frames off, matching frames on). Calling
@@ -60,25 +101,52 @@ def evaluate_eventful_tbkv_vitdet(device, model, data, config):
             if f_i % frame_stride:
                 continue
             frame = frame.to(device)
-            if step == warmup:
-                _set_caching(model, False)   # warm-up done: build cache, start matching
-            # Warm-up FLOPs are invisible (streaming): count matching frames only.
-            if step >= warmup:
+            is_caching = step < warmup
+            if cache_period is not None and step >= warmup:
+                # Periodic refresh: one caching frame every cache_period frames.
+                is_caching = (step % int(cache_period)) == 0
+                if is_caching:
+                    refresh_frames += 1
+                    _clear_caches(model)  # stale cache dropped; rebuilt this frame
+            _set_caching(model, is_caching)
+            counted = whole_stream or not is_caching
+            if counted:
                 model.counting()
             else:
                 model.no_counting()
             with torch.inference_mode():
-                results = model(frame)
-            if step >= warmup:
+                if cuda_timing:
+                    torch.cuda.reset_peak_memory_stats(device)
+                    starter.record()
+                    results = model(frame)
+                    ender.record()
+                    torch.cuda.synchronize()
+                    latency += starter.elapsed_time(ender)
+                    memory += torch.cuda.max_memory_allocated() / (1024 * 1024)
+                    timed += 1
+                else:
+                    results = model(frame)
+            total_frames += 1
+            scored = whole_stream or step >= warmup
+            if scored:
                 outputs.extend(results)
                 labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
+            if counted and not is_caching:
                 match_frames += 1
             step += 1
+
+    if cuda_timing and timed > 0:
+        print(f"Latency: {latency / timed} ms", flush=True)
+        print(f"Memory: {memory / timed} MB", flush=True)
+    if cache_period is not None:
+        print(f"Refresh frames (dense cost, excluded from matching avg): "
+              f"{refresh_frames}", flush=True)
 
     mean_ap = MeanAveragePrecision()
     mean_ap.update(outputs, labels)
     metrics = mean_ap.compute()
-    counts = model.total_counts() / max(match_frames, 1)
+    denom = total_frames if whole_stream else match_frames
+    counts = model.total_counts() / max(denom, 1)
     model.clear_counts()
     return {"metrics": metrics, "counts": counts}
 

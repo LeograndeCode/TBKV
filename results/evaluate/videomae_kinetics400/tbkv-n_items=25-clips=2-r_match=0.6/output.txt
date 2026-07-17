@@ -1,0 +1,20 @@
+
+============================================================
+SUMMARY
+============================================================
+Videos: 25 | clips/video: 2 x 16 frames | r_match: 0.6
+
+Baseline top1: 84.00%  top5: 92.00%
+TBKV     top1: 84.00%  top5: 88.00%
+
+Baseline FLOPs/clip: 180.51 G
+TBKV caching FLOPs/clip: 180.51 G
+TBKV matching FLOPs/clip: 104.86 G
+Baseline FLOPs/video: 361.01 G
+TBKV FLOPs/video: 285.37 G
+
+FLOP reduction (matching clips vs baseline): 41.9%
+FLOP reduction (whole video): 21.0%
+
+KV linear FLOPs saved per matching clip: 4.50 G
+Baseline runtime: 3.6s | TBKV runtime: 3.8s

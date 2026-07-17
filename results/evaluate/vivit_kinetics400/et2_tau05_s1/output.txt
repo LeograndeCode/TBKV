@@ -1,9 +1,0 @@
-Evaluation
-Quadro RTX 6000
-
-EventfulTBKV — ViViT / Kinetics-400
-  Videos evaluated : 10
-  Caching frames   : 4
-  Top-1 Accuracy   : 70.00%
-  Top-5 Accuracy   : 100.00%
-

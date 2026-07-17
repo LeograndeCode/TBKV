@@ -1,0 +1,50 @@
+{
+  "config": {
+    "n_items": 25,
+    "n_clips": 2,
+    "frames_per_clip": 16,
+    "r_match": 0.6,
+    "weights": "weights/videomae_vit_b.pth",
+    "model": "VideoMAE ViT-B/16 (official K400 fine-tune)"
+  },
+  "baseline": {
+    "top1": 0.84,
+    "top5": 0.92,
+    "flops_per_clip": 180505055632.0,
+    "flops_per_video": 361010111264.0,
+    "counts_per_clip": {
+      "conv3d_flops": 1849688064.0,
+      "bias_flops": 131260816.0,
+      "linear_flops": 133177847808.0,
+      "matmul_flops": 45317357568.0,
+      "add_flops": 28901376.0
+    },
+    "runtime_s": 3.555269479751587
+  },
+  "tbkv": {
+    "top1": 0.84,
+    "top5": 0.88,
+    "cache_flops_per_clip": 180505055632.0,
+    "matching_flops_per_clip": 104863728046.72,
+    "flops_per_video": 285368783678.72,
+    "saved_kv_flops_per_matching_clip": 4499554959.36,
+    "cache_counts_per_clip": {
+      "conv3d_flops": 1849688064.0,
+      "bias_flops": 131260816.0,
+      "linear_flops": 133177847808.0,
+      "matmul_flops": 45317357568.0,
+      "add_flops": 28901376.0
+    },
+    "matching_counts_per_clip": {
+      "conv3d_flops": 1849688064.0,
+      "bias_flops": 77654416.0,
+      "linear_flops": 79434264576.0,
+      "matmul_flops": 23484134430.72,
+      "add_flops": 17986560.0,
+      "saved_kv_linear_flops": 4499554959.36
+    },
+    "runtime_s": 3.8330695629119873
+  },
+  "flop_reduction_matching": 0.41905378949325267,
+  "flop_reduction_video": 0.20952689474662645
+}

@@ -1,7 +1,0 @@
-_defaults:
-  - "_base.yml"
-vanilla: true
-weights: "weights/vivit_b_kinetics400.pth"
-model_impl: "tome"
-model:
-  tome_r: 8          # tokens merged per block (ToMe's r)

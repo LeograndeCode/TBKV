@@ -43,14 +43,25 @@ def evaluate_vitdet_metrics(device, model, data, config):
     # gap between consecutive model inputs without changing the content. This
     # is the stress axis for methods that assume frame-to-frame adjacency.
     frame_stride = int(config.get("frame_stride", 1))
+    # warmup > 0: skip the first N frames of every video from BOTH scoring and
+    # FLOP counting (matching-frame-only protocol, shared with EventfulTBKV).
+    warmup = int(config.get("warmup", 0))
+    model.clear_counts()
 
     for _, vid_item in tqdm(zip(range(n_items), data), total=n_items, ncols=0):
         vid_item = DataLoader(vid_item, batch_size=1)
         model.reset()
+        step = 0
         for f_i, (frame, annotations) in enumerate(vid_item):
             if f_i % frame_stride:
                 continue
-            n_frames += 1
+            matching = step >= warmup
+            step += 1
+            if matching:
+                model.counting()
+                n_frames += 1
+            else:
+                model.no_counting()
             frame = frame.to(device)
             with torch.inference_mode():
                 if cuda_timing:
@@ -64,8 +75,9 @@ def evaluate_vitdet_metrics(device, model, data, config):
                     count += 1
                 else:
                     results = model(frame)
-            outputs.extend(results)
-            labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
+            if matching:
+                outputs.extend(results)
+                labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
 
     if count > 0:
         print(f"Latency: {latency / count} ms", flush=True)

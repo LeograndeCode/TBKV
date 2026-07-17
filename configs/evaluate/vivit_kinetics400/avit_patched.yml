@@ -1,9 +1,0 @@
-_defaults:
-  - "_base.yml"
-vanilla: true
-weights: "weights/vivit_b_kinetics400.pth"
-model_impl: "avit"
-model:
-  avit_gamma: 5.0
-  avit_beta: null   # null = calibrate per-sample; see src/reduction/avit.py
-  avit_max_drop_rate: 0.2

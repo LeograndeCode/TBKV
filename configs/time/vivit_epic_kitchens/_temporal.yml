@@ -1,3 +1,0 @@
-model:
-  spatial_config:
-    block_class: "EventfulBlock"

@@ -8,3 +8,21 @@
   Top-5 Accuracy   : 79.00%
   GFLOPs/clip      : caching 618 + matching 288 = TOTAL 906
 ## ViTDet cr=0.25 mi=2  substitute=FALSE
+    map_50:            0.8692
+    accumulator_flops: 1.202e+07
+    add_flops:         3.99e+08
+    bias_flops:        3.185e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        2.036e+08
+    linear_flops:      3.261e+10
+    matmul_flops:      1.257e+10
+## ViTDet cr=0.25 mi=2  substitute=TRUE
+    map_50:            0.8718
+    accumulator_flops: 1.241e+07
+    add_flops:         3.99e+08
+    bias_flops:        3.539e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        2.036e+08
+    linear_flops:      3.533e+10
+    matmul_flops:      1.535e+10
+SUBSTITUTE-DONE

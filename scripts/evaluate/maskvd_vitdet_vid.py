@@ -60,7 +60,7 @@ def get_region_mask_dynamic(results, image_shape, conf_threshold=0.5, region_siz
     return mask_index, sparsity
 
 
-def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0, frame_stride=1):
+def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0, frame_stride=1, warmup=0):
     model.counting()
     model.clear_counts()
     n_frames = 0
@@ -92,7 +92,13 @@ def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0, f
         for _raw_idx, (frame, annotations) in enumerate(loader):
             if _raw_idx % frame_stride:
                 continue
-            n_frames += 1
+            # Warm-up frames run (to seed masks) but are not scored or counted.
+            matching = step >= warmup
+            if matching:
+                model.counting()
+                n_frames += 1
+            else:
+                model.no_counting()
             with torch.inference_mode():
                 if step % period == 0:
                     # Full inference: no masking
@@ -120,8 +126,9 @@ def run_evaluation(device, model, data, n_items, period=4, conf=0.5, margin=0, f
                     count += 1
                 else:
                     frame_results, _ = model(frame, mask_index)
-                outputs.extend(frame_results)
-                labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
+                if matching:
+                    outputs.extend(frame_results)
+                    labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
 
             total_sparsity += sparsity
             total_steps += 1
@@ -162,6 +169,7 @@ def main():
     conf = float(overrides.get("conf", 0.5))
     margin = int(overrides.get("margin", 0))
     frame_stride = int(overrides.get("frame_stride", 1))
+    warmup = int(overrides.get("warmup", 0))
     output_dir = Path(overrides.get("_output", "/dev/shm/compare/maskvd_672/"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -218,7 +226,7 @@ def main():
 
     metrics, counts, avg_sparsity = run_evaluation(
         device, model, data, n_items, period=period, conf=conf, margin=margin,
-        frame_stride=frame_stride,
+        frame_stride=frame_stride, warmup=warmup,
     )
 
     total_gflops = sum(v for v in counts.values()) / 1e9

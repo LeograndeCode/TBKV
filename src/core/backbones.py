@@ -21,7 +21,7 @@ def _ensure_eventful_transformer_on_path():
 
 
 def _resolve_block_class(block_class_name):
-    """Resolve block class from src.core.blocks, src.evit.blocks, or eventful_transformer."""
+    """Resolve block class from src.core.blocks or eventful_transformer."""
     block_class = getattr(blocks, block_class_name, None)
     if block_class is not None:
         return block_class
@@ -31,9 +31,6 @@ def _resolve_block_class(block_class_name):
     if block_class_name in ("EventfulTBKVBlock", "EventfulTBKVTokenwiseBlock"):
         import src.eventful_tbkv.blocks as et
         return getattr(et, block_class_name)
-    if block_class_name == "EVITBlock":
-        from src.evit.blocks import EVITBlock
-        return EVITBlock
     # All Eventful* blocks live in the eventful-transformer package.
     _EVENTFUL_CLASSES = (
         "EventfulBlock",

@@ -1,0 +1,103 @@
+% =========================================================================
+% Algorithms 1 and 2 for the Methodology section.
+% Requires: algorithm, algpseudocode.
+%
+% Placement:
+%   * Algorithm 1 (alg:standalone) goes in the "Standalone TempoMem"
+%     subsection; it covers BOTH phases (warm-up caching and matching with
+%     token substitution).
+%   * Algorithm 2 (alg:eventfultm) goes in the "Integration with Eventful
+%     Transformers" subsection.
+%   * If these replace the old generic Algorithm (alg:recompute), update
+%     its references:
+%       - Cache-Aware Recomputation intro:
+%           "(Algorithm~\ref{alg:standalone} instantiates the full
+%            procedure for the standalone variant and
+%            Algorithm~\ref{alg:eventfultm} for the Eventful integration)"
+%       - Pipeline, Matching paragraph:
+%           "All subsequent frames run the matching branch of
+%            Algorithm~\ref{alg:standalone} (or
+%            Algorithm~\ref{alg:eventfultm}) in every TempoMem block."
+%       - Complexity Analysis:
+%           "A TempoMem matching frame (matching branch of
+%            Algorithm~\ref{alg:standalone}) ..."
+% =========================================================================
+
+\begin{algorithm}[t]
+\caption{Standalone TempoMem (one block, one frame)}
+\label{alg:standalone}
+\begin{algorithmic}[1]
+\Require
+  Frame tokens; phase (\textsc{caching} or \textsc{matching});
+  cache $(E, \hat E, \tilde K, \tilde V)$; buffer $B$;
+  ratios $\beta$, $r$
+  \vspace{0.3em}
+
+\If{phase is \textsc{caching}}
+  \Comment{Warm-up or refresh frame}
+  \State Run the block unmodified (dense attention and MLP)
+  \State Score tokens with the saliency of Eq.~\ref{eq:saliency};
+    the $\lfloor \beta N \rfloor$ lowest scores form the background
+  \State Append the background tokens and their exact K/V to $B$
+  \If{this is the last caching frame}
+    \State Merge $B$ with $T$ BSM passes into
+      $(E, \hat E, \tilde K, \tilde V)$; clear $B$
+  \EndIf
+  \State \Return the dense block output
+\Else
+  \Comment{Matching frame}
+  \State Split the normalized tokens into background $X_b$ and
+    foreground $X_f$ via Eq.~\ref{eq:saliency}
+  \State Assign each background token its most cosine-similar prototype
+  \State Mark the $\lfloor r N_b \rfloor$ best-matching tokens as matched;
+    $E_{\mathrm{m}} \gets$ their distinct prototypes
+  \State $X' \gets [\,E_{\mathrm{m}} \mathbin{\Vert} X_{\mathrm{u}}
+    \mathbin{\Vert} X_f\,]$
+    \hfill\Comment{Token substitution}
+  \State $Q \gets$ query projection of all $N'$ tokens of $X'$
+  \State $K \gets [\,\tilde K_{\mathrm{m}} \mathbin{\Vert}
+    \text{fresh keys of } X_{\mathrm{u}}, X_f\,]$
+    \hfill\Comment{KV reuse}
+  \State $V \gets [\,\tilde V_{\mathrm{m}} \mathbin{\Vert}
+    \text{fresh values of } X_{\mathrm{u}}, X_f\,]$
+  \State \Return block output on $(X', Q, K, V)$
+    \hfill\Comment{Attention, projection, MLP on $N'$ tokens}
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Eventful + TempoMem recompute-set filter (one block, one frame)}
+\label{alg:eventfultm}
+\begin{algorithmic}[1]
+\Require
+  Frame tokens; Eventful gates (qkv, projection, MLP);
+  prototype cache $E$; buffer $B$; reuse fraction $\gamma$
+  \vspace{0.3em}
+
+\State $C \gets$ top-$k$ candidate set proposed by the qkv gate
+  \hfill\Comment{Most-changed tokens}
+\If{phase is \textsc{caching}}
+  \State Append the gated tokens to $B$; on the last caching frame,
+    merge $B$ with $T$ BSM passes into $E$
+  \State \Return standard Eventful block output on $C$
+\Else
+  \State Compare each candidate's gate input to every prototype in $E$
+    by cosine similarity
+  \State $D \gets$ the $\lfloor \gamma k \rfloor$ candidates most similar
+    to a prototype
+    \hfill\Comment{Class token always protected}
+  \State $R \gets C \setminus D$
+    \hfill\Comment{Kept set: tokens the cache cannot explain}
+  \If{substitution variant}
+    \State qkv gate recomputes all of $C$, with each input in $D$
+      overwritten by its best-matching prototype
+  \Else
+    \State qkv gate recomputes only $R$
+  \EndIf
+  \State Force $R$ onto the projection and MLP gates
+    \hfill\Comment{Accumulators keep stale values elsewhere}
+  \State \Return Eventful block output
+\EndIf
+\end{algorithmic}
+\end{algorithm}

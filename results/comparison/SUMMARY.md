@@ -50,6 +50,16 @@ Eventful 0.786 vs ours 0.716), and at matched mAP@50 Eventful is cheaper. The
 token absorbs dropped patch tokens cheaply, but detection needs the spatial
 tokens TBKV drops, so localization degrades. Honest negative result on ViTDet.
 
+## Whole-Kinetics-400 val (19877 clips) — Eventful baselines (cr=0)
+
+Full-val (not sampled) Eventful points at different token budgets, matching-frame
+FLOPs. These are the clean Pareto anchors for the ViViT plot.
+
+| config | token_top_k | Top-1 | Top-5 | GFLOPs/frame (matching) |
+|---|---|---|---|---|
+| eventful_tbkv_24 | 24 | 62.38 | 82.23 | 27.2 |
+| eventful_tbkv_48 | 48 | 67.54 | 87.26 | 53.8 |
+
 ## Sweep: cache_reuse x merge_iterations
 
 ### ViViT / Kinetics-400 (100 clips). Matching-frame FLOPs.
@@ -73,9 +83,23 @@ collapsed above). Two clean findings:
 ### ViTDet / ImageNet-VID (25 videos, token_top_k=512). Matching-frame FLOPs
 ### (counting bug fixed; earlier ViTDet GFLOPs were ~10x undercounted).
 
-| cache_reuse | mAP@50 | GFLOPs/frame |
-|---|---|---|
-| (running) | | |
+| cache_reuse | merge_iters | mAP@50 | GFLOPs/frame |
+|---|---|---|---|
+| 0.0 (=Eventful) | - | 0.903 | 60.3 |
+| 0.25 | 2 | 0.869 | 46.6 |
+| 0.25 | 4 | 0.864 | 46.6 |
+| 0.25 | 8 | 0.852 | 46.6 |
+| 0.50 | 2 | 0.778 | 32.9 |
+| 0.50 | 4 | 0.769 | 32.9 |
+| 0.50 | 8 | 0.747 | 32.9 |
+| 0.75 | 2 | 0.593 | 19.3 |
+| 0.75 | 4 | 0.581 | 19.3 |
+
+Unlike ViViT, on detection: (1) mAP@50 falls monotonically with cache_reuse
+(0.903 -> 0.593), and (2) merge_iterations matters and FEWER is better (finer
+prototypes = better matches). TBKV trades accuracy for FLOPs here; it does not
+sit on Eventful's Pareto front. Root cause: detection needs the spatial tokens
+TBKV drops (localization), whereas ViViT's class-token readout does not.
 
 ## Appendix: motion-compensation variant — robustness thesis REFUTED
 

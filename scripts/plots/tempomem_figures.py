@@ -45,27 +45,24 @@ mpl.rcParams.update({
 })
 
 # ------------------------------------------------------------------- data ----
-# ViViT-B factorised / Kinetics-400 val, 100 clips, two-pass protocol.
+# ViViT-B factorised / Kinetics-400 FULL val (19,877 videos), two-pass protocol.
 # GFLOPs = MATCHING pass only (the caching pass is identical for every method,
 # so it is excluded; base has no caching pass and is shown as a reference line).
-# Sweep: scripts/evaluate/eventful_tbkv_vivit_kinetics400.py.
-VIVIT_N = 100
+# Runs: results/evaluate/vivit_kinetics400/{eventful_tbkv_24,eventful_tbkv_48,
+# eventful_tbkv}; r=96 measured with the final_96 checkpoint.
+VIVIT_N = 19877
 VIVIT = {
     "base":     {"gflops": 3359, "top1": 73.0},   # vanilla, whole clip
     # Eventful across its own compute knob r = token_top_k (cache_reuse=0).
     # Each r uses its own fine-tuned checkpoint (final_24/48/96).
-    # None = run not finished yet; filtered out at plot time.
     "eventful": [   # (r, matching GFLOPs/clip, Top-1 %)
-        (24, 435, 61.0),
-        (48, 860, 66.0),   # plot_ev_r48_ownw
-        (96, 1711, 71),   # pending final_96 weights
+        (24, 435, 62.38),   # Top-5 82.23, caching 618  + matching 435  = 1053
+        (48, 860, 67.54),   # Top-5 87.26, caching 1016 + matching 860  = 1877
+        (96, 1711, 75.71),  # Top-5 92.35, caching 1814 + matching 1711 = 3525
     ],
     # TempoMem on top of Eventful r=24, across cache_reuse rho.
     "tempomem": [   # (rho, matching GFLOPs/clip, Top-1 %)
-        (0.25, 329, 59.0),
-        (0.50, 222, 59.0),
-        (0.70, 134, 59.0),
-        (0.90, 45, 59.0),
+        (0.50, 222, 59.85),  # Top-5 79.83, caching 618 + matching 222 = 840
     ],
 }
 
@@ -113,7 +110,7 @@ def fig_vivit():
     b = VIVIT["base"]
     ax.axhline(b["top1"], color=C_BASE, linewidth=1, linestyle=(0, (4, 3)),
                zorder=2)
-    ax.annotate(f"ViViT-B base: {b['top1']:.0f}%  ({b['gflops']} GF/clip)",
+    ax.annotate(f"ViViT-B base: {b['top1']:.0f}%  ({b['gflops']} GF/clip, 100 clips)",
                 (0.02, b["top1"]), xycoords=("axes fraction", "data"),
                 textcoords="offset points", xytext=(0, 4), fontsize=7.5,
                 color=INK2)
@@ -154,7 +151,7 @@ def fig_vivit():
     ax.set_xlabel("GFLOPs / clip")
     ax.set_ylabel("Top-1 accuracy (%)")
     ax.set_title("Effect of TempoMem on the Eventful Transformer\n"
-                 "ViViT-B · Kinetics-400 · 100 clips · Wilson 95% CI",
+                 "ViViT-B · Kinetics-400 full val (19,877 clips) · Wilson 95% CI",
                  fontsize=9, color=INK, pad=8)
     ax.legend(loc="lower right", fontsize=8)
     fig.tight_layout()

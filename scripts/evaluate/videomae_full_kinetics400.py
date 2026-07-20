@@ -97,6 +97,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Full-scale VideoMAE K400: baseline + TBKV + ToMe sweep"
     )
+    parser.add_argument("--model", type=str, default="vit_b",
+                        choices=["vit_b", "vit_l"])
     parser.add_argument("--n_items", type=int, default=None,
                         help="number of videos (default: full val split)")
     parser.add_argument("--n_clips", type=int, default=2)
@@ -117,9 +119,12 @@ def main():
     n_items = cli.n_items if cli.n_items is not None else len(data)
     n_items = min(n_items, len(data))
 
+    # vit_b keeps the original directory name so existing results still match.
+    size_tag = "full" if cli.model == "vit_b" else f"full_{cli.model}"
     output_dir = Path(cli.output_dir or Path(
         "results", "evaluate", "videomae_kinetics400",
-        f"full-n_items={n_items}-clips={cli.n_clips}-r_match={cli.r_match}",
+        f"{size_tag}-n_items={n_items}-clips={cli.n_clips}"
+        f"-r_match={cli.r_match}",
     ))
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / "checkpoint.pt"
@@ -134,9 +139,11 @@ def main():
             start = ckpt["next_index"]
             print(f"Resuming from checkpoint at video {start}", flush=True)
 
-    model_tbkv = build_videomae_tbkv(device=device, r_match=cli.r_match)
+    model_tbkv = build_videomae_tbkv(
+        device=device, r_match=cli.r_match, model_size=cli.model
+    )
     model_tbkv.counting()
-    model_tome = build_videomae_tbkv(device=device)
+    model_tome = build_videomae_tbkv(device=device, model_size=cli.model)
     apply_tome(model_tome, r=0, prop_attn=False)
     model_tome.counting()
 
@@ -167,7 +174,8 @@ def main():
     # ── Report ───────────────────────────────────────────────────────────
     lines = [
         "=" * 72,
-        f"VideoMAE ViT-B/16 K400 val: {n_done} videos, "
+        f"VideoMAE {'ViT-L/16' if cli.model == 'vit_l' else 'ViT-B/16'} "
+        f"K400 val: {n_done} videos, "
         f"{cli.n_clips}x{cli.frames_per_clip} frames, r_match={cli.r_match}",
         "=" * 72,
         f"{'method':<12} {'top1':>8} {'top5':>8} {'GFLOPs/clip':>12} "

@@ -308,7 +308,9 @@ class VideoMAETBKV(nn.Module):
         # x: [B, 3, T, H, W]
         self.state["prev_attn_map"] = None
         x = self.patch_embed(x)
-        x = x + self.pos_embed.type_as(x)
+        # Token order is temporal-major, so a clip shorter than num_frames
+        # (e.g. a few caching frames) takes the leading positions.
+        x = x + self.pos_embed[:, : x.shape[1]].type_as(x)
         for block in self.blocks:
             x = block(x)
         x = self.fc_norm(x.mean(dim=1))
@@ -357,13 +359,32 @@ def load_videomae_checkpoint(model: VideoMAETBKV, path):
 
 
 def build_videomae_tbkv(
-    weights_path=None, device="cuda", r_match=0.6, verbose=False
+    weights_path=None, device="cuda", r_match=0.6, verbose=False,
+    model_size="vit_b",
 ):
     from pathlib import Path
 
+    from src.utils.config import load_config
+
+    config = load_config(
+        Path("configs", "models", f"videomae_{model_size}.yml")
+    )
+    model_config = config["model"]
     if weights_path is None:
-        weights_path = Path("weights", "videomae_vit_b.pth")
-    model = VideoMAETBKV(r_match=r_match, verbose=verbose)
+        weights_path = Path(config["weights"])
+    model = VideoMAETBKV(
+        img_size=model_config["input_shape"][2],
+        patch_size=model_config["tubelet_shape"][1],
+        num_classes=model_config["classes"],
+        embed_dim=model_config["embed_dim"],
+        depth=model_config["depth"],
+        num_heads=model_config["num_heads"],
+        mlp_ratio=model_config["mlp_ratio"],
+        num_frames=model_config["input_shape"][0],
+        tubelet_size=model_config["tubelet_shape"][0],
+        r_match=r_match,
+        verbose=verbose,
+    )
     load_videomae_checkpoint(model, weights_path)
     model = model.to(device)
     model.eval()

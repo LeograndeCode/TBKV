@@ -1,0 +1,98 @@
+{
+  "config": {
+    "n_items": null,
+    "n_clips": 2,
+    "frames_per_clip": 16,
+    "r_match": 0.6,
+    "tome_r": [
+      33,
+      65,
+      98,
+      130
+    ],
+    "checkpoint_every": 250,
+    "output_dir": null
+  },
+  "n_done": 19877,
+  "results": {
+    "base": {
+      "top1": 0.7953916587010113,
+      "top5": 0.9413392363032651,
+      "flops_per_clip": 180505055632.0,
+      "saved_kv_per_clip": 0.0,
+      "counts_per_clip": {
+        "conv3d_flops": 1849688064.0,
+        "bias_flops": 131260816.0,
+        "linear_flops": 133177847808.0,
+        "matmul_flops": 45317357568.0,
+        "add_flops": 28901376.0
+      }
+    },
+    "tbkv": {
+      "top1": 0.7769281078633596,
+      "top5": 0.9293152890275193,
+      "flops_per_clip": 140353924086.70523,
+      "saved_kv_per_clip": 2180283273.5628114,
+      "counts_per_clip": {
+        "conv3d_flops": 1849688064.0,
+        "bias_flops": 102937832.30628364,
+        "linear_flops": 104720693850.02567,
+        "matmul_flops": 33657523365.832672,
+        "add_flops": 23080974.540624842,
+        "saved_kv_linear_flops": 2180283273.5628114
+      }
+    },
+    "tome_r33": {
+      "top1": 0.7949891834783921,
+      "top5": 0.9412386174976103,
+      "flops_per_clip": 153555817360.0,
+      "saved_kv_per_clip": 0.0,
+      "counts_per_clip": {
+        "conv3d_flops": 1849688064.0,
+        "bias_flops": 114685840.0,
+        "linear_flops": 115893645312.0,
+        "matmul_flops": 35672546304.0,
+        "add_flops": 25251840.0
+      }
+    },
+    "tome_r65": {
+      "top1": 0.7942848518388087,
+      "top5": 0.9393268601901695,
+      "flops_per_clip": 129039831952.0,
+      "saved_kv_per_clip": 0.0,
+      "counts_per_clip": {
+        "conv3d_flops": 1849688064.0,
+        "bias_flops": 98613136.0,
+        "linear_flops": 99133206528.0,
+        "matmul_flops": 27936611328.0,
+        "add_flops": 21712896.0
+      }
+    },
+    "tome_r98": {
+      "top1": 0.7884489611108316,
+      "top5": 0.9364592242290084,
+      "flops_per_clip": 105424850320.0,
+      "saved_kv_per_clip": 0.0,
+      "counts_per_clip": {
+        "conv3d_flops": 1849688064.0,
+        "bias_flops": 82038160.0,
+        "linear_flops": 81849004032.0,
+        "matmul_flops": 21626056704.0,
+        "add_flops": 18063360.0
+      }
+    },
+    "tome_r130": {
+      "top1": 0.773859234290889,
+      "top5": 0.9289128138049001,
+      "flops_per_clip": 84430198672.0,
+      "saved_kv_per_clip": 0.0,
+      "counts_per_clip": {
+        "conv3d_flops": 1849688064.0,
+        "bias_flops": 66199696.0,
+        "linear_flops": 65376399360.0,
+        "matmul_flops": 17123340288.0,
+        "add_flops": 14571264.0
+      }
+    }
+  }
+}

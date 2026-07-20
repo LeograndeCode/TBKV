@@ -66,6 +66,13 @@ def evaluate_eventful_tbkv_vitdet(device, model, data, config):
     cache_period = config.get("cache_period", None)
     whole_stream = bool(config.get("whole_stream", False))
     measure_latency = bool(config.get("measure_latency", False))
+    # replay_matching: build the cache on the first `warmup` frames, then
+    # REPLAY the video from frame 0 entirely in matching mode, scoring and
+    # counting every frame. This matches the accounting of methods that are
+    # evaluated at matching cost on all frames (dense/STGT/MaskVD rows):
+    # mAP covers the full video, GFLOPs/frame averages matching frames only
+    # (the caching pass is neither scored nor counted).
+    replay_matching = bool(config.get("replay_matching", False))
 
     outputs, labels = [], []
     match_frames = 0
@@ -96,6 +103,44 @@ def evaluate_eventful_tbkv_vitdet(device, model, data, config):
         loader = DataLoader(vid_item, batch_size=1)
         model.reset()
         _set_caching(model, True)
+
+        if replay_matching:
+            # Caching pass: first `warmup` frames build gate state + cache.
+            model.no_counting()
+            step = 0
+            with torch.inference_mode():
+                for f_i, (frame, _) in enumerate(loader):
+                    if f_i % frame_stride:
+                        continue
+                    model(frame.to(device))
+                    step += 1
+                    if step >= warmup:
+                        break
+            _set_caching(model, False)
+            model.counting()
+            # Matching pass: every frame, from frame 0, scored and counted.
+            for f_i, (frame, annotations) in enumerate(DataLoader(vid_item, batch_size=1)):
+                if f_i % frame_stride:
+                    continue
+                frame = frame.to(device)
+                with torch.inference_mode():
+                    if cuda_timing:
+                        torch.cuda.reset_peak_memory_stats(device)
+                        starter.record()
+                        results = model(frame)
+                        ender.record()
+                        torch.cuda.synchronize()
+                        latency += starter.elapsed_time(ender)
+                        memory += torch.cuda.max_memory_allocated() / (1024 * 1024)
+                        timed += 1
+                    else:
+                        results = model(frame)
+                total_frames += 1
+                match_frames += 1
+                outputs.extend(results)
+                labels.append(squeeze_dict(dict_to_device(annotations, device), dim=0))
+            continue
+
         step = 0
         for f_i, (frame, annotations) in enumerate(loader):
             if f_i % frame_stride:

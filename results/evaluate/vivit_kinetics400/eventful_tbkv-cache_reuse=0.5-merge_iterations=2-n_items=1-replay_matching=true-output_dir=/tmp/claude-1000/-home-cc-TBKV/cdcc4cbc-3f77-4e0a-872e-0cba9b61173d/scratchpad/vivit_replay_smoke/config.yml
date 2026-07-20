@@ -1,0 +1,50 @@
+model:
+  classes: 400
+  input_shape:
+  - 32
+  - 3
+  - 224
+  - 224
+  normalize_mean: 0.45
+  normalize_std: 0.225
+  spatial_views: 3
+  temporal_stride: 2
+  temporal_views: 4
+  tubelet_shape:
+  - 2
+  - 16
+  - 16
+  spatial_config:
+    depth: 12
+    position_encoding_size:
+    - 14
+    - 14
+    block_config:
+      dim: 768
+      heads: 12
+      mlp_ratio: 4
+      matmul_2_cast: float16
+      cache_reuse: 0.5
+      merge_iterations: 4
+      merge_ratio: 0.5
+      caching: true
+    block_class: EventfulTBKVBlock
+  temporal_config:
+    depth: 4
+    position_encoding_size:
+    - 16
+    block_config:
+      dim: 768
+      heads: 12
+      mlp_ratio: 4
+_output: results/evaluate/vivit_kinetics400/eventful_tbkv-cache_reuse=0.5-merge_iterations=2-n_items=1-replay_matching=true-output_dir=/tmp/claude-1000/-home-cc-TBKV/cdcc4cbc-3f77-4e0a-872e-0cba9b61173d/scratchpad/vivit_replay_smoke/
+vanilla: false
+token_top_k:
+- 24
+weights: weights/vivit_b_kinetics400_final_24.pth
+cache_reuse: 0.5
+merge_iterations: 2
+n_items: 1
+replay_matching: true
+output_dir: /tmp/claude-1000/-home-cc-TBKV/cdcc4cbc-3f77-4e0a-872e-0cba9b61173d/scratchpad/vivit_replay_smoke
+_name: eventful_tbkv-cache_reuse=0.5-merge_iterations=2-n_items=1-replay_matching=true-output_dir=/tmp/claude-1000/-home-cc-TBKV/cdcc4cbc-3f77-4e0a-872e-0cba9b61173d/scratchpad/vivit_replay_smoke

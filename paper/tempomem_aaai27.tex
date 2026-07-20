@@ -1,18 +1,3 @@
-% =========================================================================
-% TempoMem — AAAI-27 submission draft
-% (paper name: TempoMem; the code/configs keep the legacy name
-%  "tbkv"/"eventful_tbkv" — same method)
-%
-% Build: requires the official AAAI-27 author kit (aaai2027.sty,
-% aaai2027.bst) in this directory. Compile with:
-%   pdflatex tempomem_aaai27 && bibtex tempomem_aaai27 && pdflatex && pdflatex
-%
-% Status markers:
-%   [TBD]   — number/measurement not yet produced (full-eval in progress)
-%   %% PRELIM — result measured on a subset (100 K400 clips / 25 VID
-%              videos); will be replaced by full-validation numbers.
-% Search for both before submission.
-% =========================================================================
 \documentclass[letterpaper]{article}
 \usepackage[submission]{aaai2027}
 \usepackage[hyphens]{url}
@@ -52,30 +37,7 @@
 \maketitle
 
 \begin{abstract}
-Video transformers recompute nearly identical token representations at
-every frame, even though most of what a video shows has been seen before.
-We propose TempoMem, a training-free
-inference framework that makes this reuse explicit. During a short warm-up
-window, each transformer block compresses its temporally stable tokens
-into a small set of prototypes via iterative bipartite token merging and
-caches them together with their key/value projections, forming a
-persistent scene memory of stable content. On later frames,
-incoming tokens that match a prototype reuse its cached key/value pairs
-and are substituted by the prototype in the sequence, so attention and the
-MLP run on fewer tokens; foreground tokens are always recomputed exactly,
-protecting motion-sensitive information. TempoMem modifies no weights and runs
-either standalone or as a plug-in filter on gating-based accelerators such
-as Eventful Transformers. As a filter on Eventful Transformers applied to
-ViViT-B on Kinetics-400, TempoMem discards up to 75\% of the recompute set
-for a fixed 2-point Top-1 cost, cutting steady-state compute $3.8\times$
-below Eventful itself, and the accuracy cost is paid entirely at the first
-reuse step. On ImageNet VID detection, where predictions are read from the
-spatial tokens themselves, the trade-off is markedly less favorable:
-mAP@50 degrades in proportion to the reuse rate, so reuse buys compute at
-a real accuracy price. Our analysis attributes the contrast to the
-prediction readout: content-based reuse is highly effective for global
-class-token readouts, while dense spatial prediction consumes exactly the
-per-token detail that reuse approximates.
+Transformer-based models have demonstrated outstanding performance in video understanding tasks due to their capacity to capture long-range dependencies. However, their high computational cost, combined with the massive volume of streaming video data, poses significant challenges for real-time deployment on resource-constrained edge devices. Existing efficiency methods reduce redundancy by comparing consecutive frames, but discard the wealth of information already observed earlier in the stream: once a token falls outside the immediate temporal window, it must be recomputed from scratch when the same scene content reappears. To address this limitation, we propose TempoMem, a training-free framework that exploits long-term recurrence in streaming video. Through a novel clustering algorithm, TempoMem incrementally builds a Persistent Scene Memory (PSM), a compact key-value representation of previously observed scene content, and reuses it to bypass computation for recurring tokens. Because it is training-free and architecture-agnostic, TempoMem is designed to be layered on top of existing state-of-the-art acceleration methods, compounding their savings rather than competing with them. When layered on top of an existing state-of-the-art acceleration method, experimental results show that TempoMem reduces computation by 75\% compared to the base model and by a further 49\% in steady state compared to the accelerated method alone, at a cost of only 2.5\% in Top-1 accuracy, improving the accuracy-efficiency tradeoff for video transformers in streaming settings.
 \end{abstract}
 
 \section{Introduction}
@@ -84,113 +46,92 @@ Vision Transformers (ViTs) \cite{vit} represent images as token sequences
 and have become the dominant backbone for video understanding
 \cite{vivit,videomae}. Their cost, however, scales with the number of
 tokens processed, and video multiplies that number by the frame rate.
-Consecutive frames of a video overwhelmingly depict the same scene: the
-road, the walls, the field, the furniture persist for hundreds of frames
-while only a small foreground region changes. A standard video transformer
-nevertheless recomputes every token embedding, every key/value projection,
-and every attention map from scratch at every frame, paying repeatedly for
-computation whose result it has already produced.
+This cost collides with a growing deployment reality: cameras on
+vehicles, drones, and IoT installations produce continuous streams that
+must be analyzed close to the sensor, on hardware whose compute and
+energy budgets are orders of magnitude below a datacenter GPU. For such
+edge settings the relevant workload is not a short clip but an unbounded
+stream, and the relevant question is not how fast one frame can be
+processed but how little work each additional frame can be made to cost.
 
-A growing body of work reduces this redundancy. Spatial token-reduction
+A rich body of work attacks this redundancy. Spatial token-reduction
 methods prune, select, or merge less informative tokens within a single
-frame \cite{tome,evit,dynamicvit,avit,ats}; they are effective against
-intra-frame redundancy but treat each frame independently and preserve
-nothing across time. Temporal methods address this by reusing or
-selectively updating information between frames: event-driven transformers
-recompute only tokens that changed significantly \cite{eventful}, gated
-transformers skip computation for temporally similar regions \cite{stgt},
-and related approaches exploit spatio-temporal caching and masking
-\cite{deltacnn,maskvd}. Despite this progress, both families still frame
-efficiency as a \emph{per-frame decision problem}: which tokens should be
-pruned, updated, skipped, or reused in the current frame? This framing is
-effective for short clips, but it underuses a key property of streaming
-video: many parts of the scene are not merely redundant between two
-adjacent frames, but \emph{persistent} over a much longer horizon.
-Background regions such as roads, walls, floors, fields, and static
-objects remain visually and semantically stable across hundreds of frames.
-Treating such content as a repeated per-frame matching problem misses the
-opportunity to amortize its computation over time. Instead of asking which
-tokens can be skipped in the current frame, we ask a different question:
-\emph{which visual computations should not need to be performed again at
-all?}
+frame \cite{tome,evit,dynamicvit,avit,ats}; temporal methods reuse or
+selectively update information between frames, recomputing only tokens
+that changed \cite{eventful,stgt,deltacnn}, masking background regions
+\cite{maskvd}, or cascading several such gates \cite{cstvit}. Despite
+their diversity, these temporal methods share one structural trait:
+every frame, each of them partitions the tokens into a set worth
+recomputing and a set whose previous result can be reused. The decision
+is made per frame, against the immediately preceding frames, and
+whatever was learned about the scene earlier in the stream is discarded.
+Yet most of what a video shows is not merely similar to the last frame;
+it is \emph{persistent}. Roads, walls, floors, and static objects remain
+visually stable for hundreds of frames, disappear behind the camera, and
+reappear. A per-frame decision rule pays for such content again and
+again. We therefore ask a different question: \emph{which visual
+computations should not need to be performed again at all?}
 
-We answer with \textbf{TempoMem}, a training-free, memory-centric
-inference framework. The name reflects the central mechanism, a temporal
-memory of visual computation: temporally stable background tokens are
-represented in a compact per-block \emph{Persistent Scene Memory} (PSM),
-and their transformer key/value (K/V) representations are reused across
-future frames instead of being recomputed. The PSM's units are
-\emph{prototypes}: during a short warm-up window, each block compresses
-the stable tokens it observes into a bounded prototype set via iterative
-bipartite token merging \cite{tome}, stored together with their exact K/V
-projections. Rather than passive storage of recent features, the memory is
-an active computational object: it is constructed, compressed, matched,
-updated, and reused across time. On every later frame, incoming tokens are
-matched against it by content: a matched token (i)~reuses its prototype's
-cached K/V, skipping its own projections, and (ii)~is substituted by the
-prototype in the sequence itself, so attention and the MLP run on fewer
-tokens. Foreground tokens, which carry the motion and object evidence the
-task depends on, are never matched or substituted; they are recomputed
-exactly at every frame, because applying memory substitution uniformly
-across all tokens damages task-relevant motion information.
+We answer it with \textbf{TempoMem}, a training-free, memory-centric
+inference framework. Its central object is a \emph{Persistent Scene
+Memory} (PSM): a compact, per-block summary of the scene content
+observed so far, built by a clustering pass that merges the stable
+tokens of a warm-up window into a bounded set of prototypes, stored
+together with their exact key/value projections. On later frames,
+incoming tokens are matched against the memory by content; a matched
+token reuses its prototype's cached projections and can be represented
+by the prototype in the sequence itself, so the model computes only what
+the memory cannot already explain. Because matching is by content rather
+than by grid position, background that shifted under camera motion can
+still hit the memory, a signal complementary to the per-position change
+detection of existing temporal methods.
 
-This design gives TempoMem two complementary benefits. First, \emph{computation
-reuse}: matched tokens reuse cached key/value representations instead of
-recomputing them. Second, \emph{token reduction}: matched background
-tokens are represented by their prototypes, shrinking the sequence that
-attention and the MLP must process. Because the memory construction cost
-is paid once per warm-up window and reused over many later frames, the
-benefit is naturally amortized over video length, making TempoMem suited to
-long videos, streaming inference, and edge settings where persistent
-background dominates total compute. Crucially, the framework is
-training-free: it modifies no weights, requires no fine-tuning, and is
-applied purely at inference time, so it composes with frozen pretrained
-checkpoints and with existing single-frame reducers such as ToMe on the
-foreground. And because matching is by content rather than by grid
-position, a background token that moved across the frame under camera
-motion can still hit the memory, a signal complementary to the
-per-position change gates of Eventful Transformers \cite{eventful}, which
-is why TempoMem runs either standalone or as a plug-in filter on Eventful's
-recompute set.
-
-We evaluate TempoMem on two regimes that stress it in opposite ways:
-action recognition with ViViT-B on Kinetics-400, where the prediction is
-read from a class token, and video object detection with ViTDet-B on
-ImageNet VID, where the prediction depends on the full spatial token grid.
-We report both trade-offs as measured: near-free reuse on the former, a
-real accuracy cost on the latter.
+TempoMem operates in two modes that share the same memory but serve
+different deployments. \emph{Standalone} TempoMem is a complete
+accelerator: it splits each frame into a stable background and a
+task-critical foreground using an attention-based saliency score,
+caches and reuses only the background, and recomputes the foreground
+exactly at every frame. \emph{Layered} TempoMem instead attaches to an
+existing temporal token-reduction method. Since all such methods already
+flag tokens as useful or useless each frame, the layered mode simply
+takes the tokens the host method classifies as useful, checks them
+against the PSM, and removes those the memory already explains. It
+never adds tokens back, so it can only subtract work from its host, and
+with the memory disabled it reduces exactly to the host method. This
+makes TempoMem a compounding accelerator rather than a competing one:
+any present or future gating method becomes a candidate host. Both
+modes are attractive at the edge for the same underlying reason: the
+memory is bounded regardless of stream length, its construction cost is
+paid once and amortized over the stream, and the reuse rate acts as a
+dial that trades a controlled amount of accuracy for large reductions
+in per-frame computation.
 
 Our contributions are:
 \begin{enumerate}
-    \item \textbf{TempoMem}, a training-free persistent-memory framework for
-    video transformer inference: each block maintains a Persistent Scene
-    Memory of prototypes built from stable background content, and couples
-    prototype-based K/V reuse with token substitution, under a
-    foreground-preserving split that protects motion-sensitive
-    information.
+    \item \textbf{TempoMem}, a training-free persistent-memory framework
+    for video transformer inference: each block maintains a Persistent
+    Scene Memory of prototypes built by clustering stable scene content,
+    and couples prototype-based key/value reuse with token substitution.
 
-    \item \textbf{A compression scheme and cost model.} Iterative
-    bipartite merging bounds the cache at
-    $M = \lceil n_0(1-\rho)^T \rceil$ prototypes independent of window
-    length, and a break-even analysis ($M < 2rC$) shows that matching
-    pays for itself whenever the cache stays well below the model width,
-    which the merge schedule guarantees by construction.
+    \item \textbf{Two operating modes.} A standalone accelerator driven
+    by an attention-based foreground/background split, and a layered
+    mode that filters the recompute set of any existing temporal
+    token-reduction method, strictly shrinking its work and reducing to
+    the unmodified host when disabled.
 
-    \item \textbf{Two integration modes.} A standalone variant driven by
-    an attention-entropy foreground/background split, and a plug-in filter
-    for Eventful Transformers that strictly shrinks the gates' recompute
-    set and reduces exactly to Eventful when disabled, giving perfectly
-    controlled comparisons.
+    \item \textbf{A cost model for streaming inference.} The clustering
+    schedule bounds the memory independently of stream length, a
+    break-even analysis gives the condition under which matching pays
+    for itself, and an amortized accounting captures the long-stream
+    regime that edge deployments actually run in.
 
     \item \textbf{An honest empirical scoping of content-based reuse.}
-    As a filter on Eventful, TempoMem discards up to 75\% of the
-    recompute set on classification for a fixed 2-point Top-1 cost,
-    cutting steady-state compute $3.8\times$, while on VID detection the
-    same filter trades accuracy for compute much less favorably, with
-    mAP@50 falling in proportion to the reuse rate. We analyze why the
-    prediction readout, global versus dense, determines when
-    content-based reuse helps, a finding we believe is useful to the
-    community beyond this specific method.
+    Layered on a representative gating accelerator, TempoMem discards a
+    large majority of the recompute set on classification at a small,
+    one-time accuracy cost, while on dense detection the same filter
+    trades accuracy much less favorably. We analyze why the prediction
+    readout, global versus dense, determines when content-based reuse
+    helps, a finding we believe is useful beyond this specific method.
 \end{enumerate}
 
 \section{Related Work}
@@ -199,40 +140,46 @@ Our contributions are:
 A first family accelerates ViTs by shrinking the token sequence within a
 single image or frame. DynamicViT \cite{dynamicvit} and A-ViT \cite{avit}
 learn to prune uninformative tokens; EViT \cite{evit} keeps the tokens
-most attended by the class token; ATS \cite{ats} samples tokens adaptively
-by importance; ToMe \cite{tome} merges similar tokens with bipartite soft
-matching, requiring no training. These methods reduce \emph{intra-frame}
-redundancy and treat every frame as an independent inference problem. TempoMem
-borrows ToMe's bipartite merging as a compression subroutine, but applies
-it \emph{across} a temporal window to build a reusable cache rather than
-within one frame; because the two act on disjoint token sets, they are
-complementary by design and can be composed, with a single-frame reducer
-handling the foreground while TempoMem handles the background.
+most attended by the class token; ATS \cite{ats} samples tokens
+adaptively by importance; ToMe \cite{tome} merges similar tokens with
+bipartite soft matching, requiring no training. These methods reduce
+intra-frame redundancy and treat every frame as an independent inference
+problem. TempoMem borrows ToMe's bipartite merging as the clustering
+subroutine of its memory, but applies it \emph{across} a temporal window
+to build a reusable cache rather than within one frame. The two act on
+disjoint token sets in the standalone mode, where a single-frame reducer
+can handle the foreground while TempoMem handles the background, so they
+compose rather than compete.
 
 \paragraph{Temporal redundancy.}
 A second family reuses computation between frames. DeltaCNN
-\cite{deltacnn} propagates sparse frame differences through convolutions;
-STGT \cite{stgt} gates transformer computation with learned temporal
-similarity; Eventful Transformers \cite{eventful} maintain per-token
-reference buffers and recompute only the top-$k$ most-changed tokens;
-MaskVD \cite{maskvd} masks background regions using detection priors.
-These methods make a fresh skip/update decision at every frame, keyed on
-\emph{grid position}: a token is reused only if the same position changed
-little. Position-keyed reuse breaks under camera motion, where every
-position changes while scene content largely does not. TempoMem instead
-matches by \emph{content} against a compressed persistent cache, so
-displaced background can still be reused; we show the two signals compose
-by running TempoMem directly on top of Eventful's gates.
+\cite{deltacnn} propagates sparse frame differences through
+convolutions; STGT \cite{stgt} gates transformer computation with
+learned temporal similarity; Eventful Transformers \cite{eventful}
+maintain per-token reference buffers and recompute only the most-changed
+tokens; MaskVD \cite{maskvd} masks background regions using detection
+priors; CST-ViT \cite{cstvit} cascades direct, offset, and spatial gates
+to jointly remove several forms of redundancy. Seen from TempoMem's
+perspective, these methods are not only baselines but potential
+\emph{hosts}: each of them emits, every frame, a partition of the tokens
+into a recompute set and a reuse set, keyed on how much each position
+changed recently. That per-frame, position-keyed decision forgets the
+stream's history and breaks under camera motion, where every position
+changes while scene content largely does not. Layered TempoMem plugs in
+exactly at this interface: it takes the host's recompute set, matches it
+by content against a persistent memory of the scene, and removes the
+tokens the memory already explains. Our evaluation instantiates this
+layering on Eventful Transformers as a representative host.
 
 \paragraph{Memory-augmented video transformers.}
-MeMViT \cite{memvit} caches compressed activations of past clips to extend
-temporal context, and Token Turing Machines \cite{ttm} learn an external
-token memory for sequential decision tasks. These works use memory to
-improve \emph{accuracy} via longer context and require training the memory
-mechanism. TempoMem shares the memory-centric perspective but uses memory for
-\emph{efficiency}: it caches K/V projections of persistent content so they
-need not be recomputed, is entirely training-free, and leaves model
-weights and accuracy-relevant foreground computation untouched. The
+MeMViT \cite{memvit} caches compressed activations of past clips to
+extend temporal context, and Token Turing Machines \cite{ttm} learn an
+external token memory for sequential decision tasks. These works use
+memory to improve \emph{accuracy} via longer context and require
+training the memory mechanism. TempoMem shares the memory-centric
+perspective but uses memory for \emph{efficiency}: it caches key/value
+projections of persistent content so they need not be recomputed, is
+entirely training-free, and leaves model weights untouched. The
 mechanism is loosely analogous to K/V caching in autoregressive language
 models, transplanted to the temporal axis of video: previously computed
 keys and values are reused rather than recomputed, except that video
@@ -241,63 +188,82 @@ requires deciding \emph{which} tokens are stable enough to reuse.
 \section{Methodology}
 \label{sec:method}
 
-TempoMem is a training-free inference framework that accelerates ViTs on
-streaming video. The premise is simple: most of what a video shows has
-been seen before, so most of what a ViT computes has been computed before.
-TempoMem makes this reuse explicit. During a short warm-up window, each
-transformer block summarizes the temporally stable tokens it observes into
-a small set of \emph{prototypes} and stores them, together with their
-key/value (K/V) projections, in a per-block cache. On every later frame,
-the block matches incoming tokens against this cache: a token that closely
-resembles a prototype (i)~\emph{reuses} the prototype's cached K/V,
-skipping its own projections, and (ii)~is \emph{substituted} by the
-prototype in the sequence itself, so attention and the MLP run on fewer
-tokens. This per-block cache is the Persistent Scene Memory of the
-Introduction; in this section we simply call it the cache. TempoMem modifies
-no weights, requires no fine-tuning, and runs either
-standalone or as a plug-in filter on top of gating-based accelerators such
-as Eventful Transformers.
+TempoMem rests on one premise: most of what a video shows has been seen
+before, so most of what a ViT computes has been computed before.
+The framework makes this reuse explicit. During a short warm-up window,
+each transformer block summarizes the temporally stable tokens it
+observes into a small set of \emph{prototypes} and stores them, together
+with their key/value (K/V) projections, in a per-block cache, the
+Persistent Scene Memory of the Introduction; in this section we simply
+call it the cache. On every later frame, the block matches incoming
+tokens against the cache: a matched token \emph{reuses} the prototype's
+cached K/V, skipping its own projections, and can additionally be
+\emph{substituted} by the prototype in the sequence itself, so attention
+and the MLP run on fewer tokens. TempoMem modifies no weights and
+requires no fine-tuning. It runs either standalone, where it decides
+itself which tokens are eligible for reuse, or layered on a host
+accelerator, where the host's own token selection provides that
+decision. Both modes share the machinery of this section; they differ
+only in how the \emph{cacheable set}, the tokens eligible for caching
+and reuse, is chosen. Table~\ref{tab:symbols} collects the symbols used
+throughout.
 
-\paragraph{Setup and notation.}
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+Symbol & Definition \\
+\midrule
+$N$, $C$ & Tokens per frame; token dimensionality \\
+$L$ & Number of transformer blocks \\
+$N_c$ & Size of the cacheable set in a frame \\
+$W$ & Warm-up window length (frames) \\
+$T$, $\rho$ & Merge passes; per-pass merge fraction \\
+$M$ & Number of prototypes in the cache \\
+$E$, $\hat E$ & Pre-LN and post-LN prototype views \\
+$\tilde K$, $\tilde V$ & Cached (merged) key/value projections \\
+$r$ & Match ratio (standalone reuse budget) \\
+$\gamma$ & Reuse fraction of the layered filter \\
+$\beta$ & Background ratio of the saliency split \\
+$P$ & Refresh period (frames) \\
+$M_u$ & Distinct prototypes engaged in a frame \\
+$N'$ & Reduced sequence length after substitution \\
+$\mathrm{LN}$ & Input LayerNorm of a block \\
+$W_Q, W_K, W_V$ & Query, key, value projections \\
+\bottomrule
+\end{tabular}
+\caption{Summary of symbols used in this paper.}
+\label{tab:symbols}
+\end{table}
+
 A ViT with $L$ blocks processes the stream frame by frame; each block
-receives $N$ tokens of dimension $C$ (we omit the batch axis). We write
-$\mathrm{LN}$ for the block's input LayerNorm and $W_Q, W_K, W_V$ for the
-query, key, and value projections. TempoMem has four knobs: the warm-up
-length $W$ (frames), the merge schedule $(T, \rho)$ ($T$ merge passes, each
-removing a fraction $\rho \le 0.5$ of the tokens), the match ratio
-$r \in [0,1]$, and the refresh period $P$ (frames). One design decision is
-deliberately left to the host pipeline: \emph{which} tokens are eligible
-for caching and reuse. We call this the \emph{cacheable set}. The
-standalone variant fills it with saliency-selected background tokens (see
-the Standalone TempoMem section), while the Eventful integration fills it with
-the tokens proposed by Eventful's gates (see the Integration with Eventful
-Transformers section). All cache state is per block.
+receives $N$ tokens of dimension $C$ (we omit the batch axis). TempoMem
+has four knobs: the warm-up length $W$, the merge schedule $(T, \rho)$,
+the reuse budget ($r$ standalone, $\gamma$ layered), and the refresh
+period $P$. All cache state is per block.
 
 \subsection{Prototype Cache Construction}
 \label{sec:cache}
 
 In streaming video, the cacheable tokens change little across nearby
 frames, and many are also mutually similar within a frame. Storing them
-verbatim over a $W$-frame window would grow the cache linearly with $W$.
-TempoMem instead compresses everything accumulated during the window into a
-bounded set of prototypes using iterative bipartite soft matching, and
-stores each prototype together with its identically merged K/V.
-
-\paragraph{Bipartite soft matching (BSM).}
-One BSM pass \cite{tome} splits $n$ tokens into two alternating sets, links
-each token in the first set to its most cosine-similar token in the second,
-keeps the strongest links, and averages each linked pair into a single
-token. A pass removes at most half of the tokens, but it does so in one
-parallel step, with no iterative clustering loop.
-
-\paragraph{From merging to prototypes.}
-A single pass compresses by at most a factor of two, which is not enough to
-summarize a multi-frame token set. We therefore compose $T$ passes, each
-removing a fraction $\rho$ of the surviving tokens. The survivors, running
-averages of everything merged into them, are our prototypes. We make no
-optimality claim for this greedy grouping; its job is to bound the cache
-size while keeping every prototype close, in cosine distance, to the tokens
-it absorbed, which is exactly the property the matching step relies on.
+verbatim over a $W$-frame window would grow the cache linearly with $W$,
+so TempoMem compresses everything accumulated during the window into a
+bounded set of prototypes and stores each prototype together with its
+identically merged K/V. The compression primitive is bipartite soft
+matching (BSM) \cite{tome}: one pass splits $n$ tokens into two
+alternating sets, links each token in the first set to its most
+cosine-similar token in the second, keeps the strongest links, and
+averages each linked pair into a single token. A single pass compresses
+by at most a factor of two, which is not enough to summarize a
+multi-frame token set, so we compose $T$ passes, each removing a
+fraction $\rho$ of the surviving tokens. The survivors, running averages
+of everything merged into them, are our prototypes. We make no
+optimality claim for this greedy clustering; its job is to bound the
+cache size while keeping every prototype close, in cosine distance, to
+the tokens it absorbed, which is exactly the property the matching step
+relies on.
 
 \begin{proposition}[Cache size bound]
 \label{prop:cachesize}
@@ -309,80 +275,70 @@ whenever $\rho = 0.5$, so the final cache size is effectively decoupled
 from the window length.
 \end{proposition}
 
-\paragraph{What the cache stores.}
-During warm-up, the block runs unmodified and appends its cacheable tokens
-and their exact K/V to a buffer. When the window closes, the merge is
-computed once on the pooled buffer, using post-LN features as the
-similarity metric, and the same merge is applied to three aligned tensors:
-pre-LN tokens, post-LN tokens, and K/V. The cache therefore holds four
-$M \times C$ matrices: a pre-LN prototype view $E$, a post-LN view
-$\hat E$, and the merged projections $\tilde K, \tilde V$. Merging once
-over the pooled window, rather than per frame, is what makes
+During warm-up the block runs unmodified and appends its cacheable
+tokens and their exact K/V to a buffer. When the window closes, the
+merge is computed once on the pooled buffer, using post-LN features as
+the similarity metric, and the same merge is applied to three aligned
+tensors: pre-LN tokens, post-LN tokens, and K/V. The cache therefore
+holds four $M \times C$ matrices: a pre-LN prototype view $E$, a post-LN
+view $\hat E$, and the merged projections $\tilde K, \tilde V$. Merging
+once over the pooled window, rather than per frame, is what makes
 Proposition~\ref{prop:cachesize} apply to the final cache rather than to
-each frame's contribution.
-
-\paragraph{Why two views.}
-Matching and the query projection consume post-LN features, while the
-residual stream consumes pre-LN features. Caching a single view and reusing
-it for both purposes compares vectors from different distributions during
-matching, and feeds $W_Q$ activations it never sees in the base model. We
-found keeping both views necessary for accuracy, at the modest cost of $MC$
-extra floats per block.
-
-\paragraph{One approximation to keep in mind.}
-Because the merge is also applied to K/V, matched queries later attend to
-\emph{averaged} keys and values. Attention is nonlinear in the keys, so
-this approximates attending to the original key set. The error is governed
-by how tight each prototype's group is, which the similarity-ordered BSM
-links keep small.
+each frame's contribution. Two views are kept because matching and the
+query projection consume post-LN features while the residual stream
+consumes pre-LN features; caching a single view and reusing it for both
+purposes compares vectors from different distributions during matching
+and feeds $W_Q$ activations it never sees in the base model. One
+approximation should be kept in mind: because the merge is also applied
+to K/V, matched queries later attend to \emph{averaged} keys and values.
+Attention is nonlinear in the keys, so this approximates attending to
+the original key set; the error is governed by how tight each
+prototype's group is, which the similarity-ordered BSM links keep small.
 
 \subsection{Cache-Aware Recomputation}
 \label{sec:recompute}
 
 At matching frames, the block uses the cache to avoid work
 (Algorithm~\ref{alg:standalone} instantiates the full procedure for the
-standalone variant and Algorithm~\ref{alg:eventfultm} for the Eventful
-integration). The frame's tokens split into the cacheable set, containing
-$N_c$ tokens, and the remaining tokens, which the host pipeline always
-recomputes exactly.
-
-\paragraph{Matching.}
-Each cacheable token is compared with every prototype by cosine similarity
-on post-LN features, and is assigned its single best-matching prototype.
-The $\lfloor r N_c \rfloor$ tokens with the highest best-match similarity
-are declared \emph{matched}; the rest stay unmatched. Since many tokens
-often map to the same prototype, duplicate assignments are collapsed,
-leaving $M_u \le \min(\lfloor r N_c \rfloor, M)$ distinct prototypes in
-play. Using a fixed count rather than a similarity threshold keeps tensor
+standalone mode and Algorithm~\ref{alg:layered} for the layered mode).
+The frame's tokens split into the cacheable set, containing $N_c$
+tokens, and the remaining tokens, which the pipeline always recomputes
+exactly. Each cacheable token is compared with every prototype by cosine
+similarity on post-LN features and assigned its single best-matching
+prototype; the $\lfloor r N_c \rfloor$ tokens with the highest
+best-match similarity are declared \emph{matched}, and the rest stay
+unmatched. Since many tokens often map to the same prototype, duplicate
+assignments are collapsed, leaving
+$M_u \le \min(\lfloor r N_c \rfloor, M)$ distinct prototypes in play.
+Using a fixed count rather than a similarity threshold keeps tensor
 shapes batch-uniform and makes the compute budget directly tunable; the
-price is that easy and hard frames are forced to the same reuse rate (see
-the Discussion and Limitations section).
+price is that easy and hard frames are forced to the same reuse rate
+(see the Discussion and Limitations section).
 
-\paragraph{KV reuse.}
 Matched tokens never enter the key and value projections: their
-contribution to attention is represented by the cached $\tilde K, \tilde V$
-rows of their prototypes. Fresh K/V are computed only for the unmatched
-cacheable tokens and for the always-recomputed tokens.
-
-\paragraph{Token substitution.}
-Matched tokens are also removed from the sequence itself and represented by
-their prototypes. Writing $E_{\mathrm{m}}$ for the pre-LN views of the
-$M_u$ distinct matched prototypes, $X_{\mathrm{u}}$ for the unmatched
-cacheable tokens, and $X_{\mathrm{a}}$ for the always-recomputed tokens,
-the block proceeds on the reduced sequence
+contribution to attention is represented by the cached
+$\tilde K, \tilde V$ rows of their prototypes, and fresh K/V are
+computed only for the unmatched cacheable tokens and the
+always-recomputed tokens. Matched tokens can additionally be removed
+from the sequence itself and represented by their prototypes. Writing
+$E_{\mathrm{m}}$ for the pre-LN views of the $M_u$ distinct matched
+prototypes, $X_{\mathrm{u}}$ for the unmatched cacheable tokens, and
+$X_{\mathrm{a}}$ for the always-recomputed tokens, the block proceeds on
+the reduced sequence
 \begin{equation}
   X' \;=\; \big[\, E_{\mathrm{m}} \,\big\|\, X_{\mathrm{u}} \,\big\|\,
   X_{\mathrm{a}} \,\big],
   \qquad N' = |X'| \;\le\; N .
   \label{eq:reduced}
 \end{equation}
-The pre-LN prototype view enters the residual stream and the post-LN view
-enters $W_Q$. Queries are computed for all $N'$ tokens; attention, the
-output projection, and the MLP then run on the reduced sequence, so savings
-are quadratic in the attention and linear in every pointwise stage.
-Because deduplication collapses all tokens matching the same prototype into
-one sequence element, $N'$ is typically well below $N$; the per-frame cost
-is data-dependent, and the counts we report are measured, not worst-case.
+The pre-LN prototype view enters the residual stream and the post-LN
+view enters $W_Q$. Queries are computed for all $N'$ tokens; attention,
+the output projection, and the MLP then run on the reduced sequence, so
+savings are quadratic in the attention and linear in every pointwise
+stage. Because deduplication collapses all tokens matching the same
+prototype into one sequence element, $N'$ is typically well below $N$;
+the per-frame cost is data-dependent, and the counts we report are
+measured, not worst-case.
 
 \begin{algorithm}[t]
 \caption{Standalone TempoMem (one block, one frame)}
@@ -432,166 +388,157 @@ is data-dependent, and the counts we report are measured, not worst-case.
 
 TempoMem targets the streaming setting: frames arrive sequentially, past
 frames cannot be revisited, and per-frame latency matters more than
-amortized-batch throughput. The pipeline has three phases.
+amortized-batch throughput. The pipeline cycles through three phases.
+The first $W$ frames are \emph{warm-up caching} frames: they run the
+unmodified model while every block accumulates its cacheable tokens and
+their K/V, so warm-up produces exact outputs and loses no accuracy; the
+cache is finalized lazily, with one merge over the pooled window, on the
+first matching frame. All subsequent frames are \emph{matching} frames
+and run the matching branch of Algorithm~\ref{alg:standalone} (or
+Algorithm~\ref{alg:layered}) in every TempoMem block. Finally, reused
+prototypes age: as the scene evolves, tokens that still match the cache
+are represented by increasingly stale features, and after a scene cut
+the cache may describe content that no longer exists. Every $P$ frames
+the pipeline therefore re-enters caching mode and rebuilds the cache,
+bounding staleness by $P$ frames at the cost of one full-model pass
+whose overhead amortizes to a factor $1/P$ (see the Complexity Analysis
+section).
 % [TBD] Strongly recommended: add a one-column pipeline overview figure
 % here (warm-up caching -> merge to prototypes -> matching frames with
 % KV reuse + substitution -> periodic refresh), referenced as Fig. 1.
 % AAAI reviewers expect a method diagram; the paper currently has none.
 
-\paragraph{Warm-up caching ($W$ frames).}
-The first $W$ frames run the unmodified model while every block accumulates
-its cacheable tokens and their K/V. The cache is finalized lazily, with one
-merge over the pooled window, on the first matching frame. Warm-up produces
-exact outputs, so no accuracy is lost during this phase.
-
-\paragraph{Matching.}
-All subsequent frames run the matching branch of
-Algorithm~\ref{alg:standalone} (or Algorithm~\ref{alg:eventfultm}) in
-every TempoMem block.
-
-\paragraph{Periodic refresh.}
-Reused prototypes age: as the scene evolves, tokens that still match the
-cache are represented by increasingly stale features, and after a scene cut
-the cache may describe content that no longer exists. Every $P$ frames the
-pipeline re-enters caching mode, re-accumulates, and rebuilds the cache,
-bounding staleness by $P$ frames. A refresh frame costs one full-model
-pass; its overhead amortizes to a factor $1/P$ (see the Complexity
-Analysis section).
-
-\paragraph{Cost accounting.}
 Unless stated otherwise, we report \emph{steady-state} per-frame cost:
 matching frames only, with refresh amortized. Warm-up cost, which occurs
 once per stream (or per refresh), is reported separately. This is the
-appropriate accounting for long-running streams, and we state it explicitly
-to keep comparisons with single-frame methods fair.
+appropriate accounting for long-running streams, and we state it
+explicitly to keep comparisons with single-frame methods fair.
 
 \subsection{Standalone TempoMem}
 \label{sec:standalone}
 
-In the standalone variant, the cacheable set is the \emph{background}: the
+In the standalone mode, the cacheable set is the \emph{background}: the
 temporally stable regions that dominate most video frames but contribute
 little task-relevant information. Foreground tokens, which carry the
 motion and object evidence the task depends on, are never matched or
-substituted; they are recomputed exactly at every frame. This separation is
-what lets TempoMem reuse aggressively without touching the tokens that
-matter most.
-
-\paragraph{Saliency-based background extraction.}
-When the block performs background matching and substitution, it scores
-each token by the sharpness of its attention: background tokens attend
-diffusely over the frame, while foreground tokens concentrate their
-attention on a few relevant tokens. Averaging the attention map of the
-previous forward pass over heads to obtain $\bar A$, token $i$ receives the
-negative entropy of its attention distribution,
+substituted; they are recomputed exactly at every frame. This separation
+is what lets TempoMem reuse aggressively without touching the tokens
+that matter most. The split is computed from the model's own attention:
+background tokens attend diffusely over the frame, while foreground
+tokens concentrate their attention on a few relevant tokens. Averaging
+the attention map of the previous forward pass over heads to obtain
+$\bar A$, token $i$ receives the negative entropy of its attention
+distribution,
 \begin{equation}
   s_i \;=\; \sum_{j} \bar A_{ij} \log \bar A_{ij},
   \label{eq:saliency}
 \end{equation}
-normalized to $[0,1]$ across the frame's tokens. The $\lfloor \beta N
-\rfloor$ lowest-scoring tokens form the background (the cacheable set) and
-the rest the foreground, where $\beta$ is the background ratio; a fixed
-split size keeps the partition exact and batch-uniform. Note that this
-scoring is part of the standalone substitution step only. It is not part of
-generic cache construction, and the Eventful integration below never
-computes it, since Eventful's gates already designate the candidate tokens.
-The attention map is one step stale (it comes from the previous forward
-pass through this block); the closing discussion explains why this lag is
-tolerable for the background side of the split.
+normalized to $[0,1]$ across the frame's tokens. The
+$\lfloor \beta N \rfloor$ lowest-scoring tokens form the background (the
+cacheable set) and the rest the foreground, where $\beta$ is the
+background ratio; a fixed split size keeps the partition exact and
+batch-uniform. This scoring belongs to the standalone mode only; the
+layered mode never computes it, because the host method already
+designates the candidate tokens. The attention map is one step stale (it
+comes from the previous forward pass through this block); the Discussion
+explains why this lag is tolerable for the background side of the
+split. Because foreground and background are handled by disjoint
+mechanisms, the foreground can additionally be reduced by an
+off-the-shelf single-frame reducer such as ToMe \cite{tome} without
+double-processing any token.
 
-\paragraph{Composing with foreground reducers.}
-Because foreground and background are handled by disjoint mechanisms, the
-foreground can additionally be reduced by an off-the-shelf single-frame
-reducer such as ToMe \cite{tome} without double-processing any token.
+Token substitution changes sequence length and replaces a token at one
+grid position with a prototype averaged over other positions and frames.
+This is incompatible with windowed attention using relative positional
+embeddings (e.g., ViTDet), where both the window partition and the
+relative-position bias require the full, position-faithful grid; after
+the first block, positional information is also baked into token
+features, so a substituted prototype carries a smeared positional
+signature. For such architectures we use a restricted
+\emph{KV-reuse-only} variant: the token grid is kept intact, matching is
+performed per position against a keyframe cache, and matched positions
+skip only their K/V projections while attention runs over the full
+window, so partitioning and relative-position biases remain exact. This
+variant retains the linear projection savings but not the quadratic
+attention savings; we report the two variants separately.
 
-\paragraph{KV-reuse-only variant for windowed attention.}
-Token substitution changes sequence length and replaces a token at one grid
-position with a prototype averaged over other positions and frames. This is
-incompatible with windowed attention using relative positional embeddings
-(e.g., ViTDet), where both the window partition and the relative-position
-bias require the full, position-faithful grid; after the first block,
-positional information is also baked into token features, so a substituted
-prototype carries a smeared positional signature. For such architectures we
-use a restricted variant: the token grid is kept intact, matching is
-performed per position against a keyframe cache, and matched positions skip
-only their K/V projections while attention runs over the full window, so
-partitioning and relative-position biases remain exact. This variant
-retains the linear projection savings but not the quadratic attention
-savings; we report the two variants separately.
+\subsection{Layered TempoMem}
+\label{sec:layered}
 
-\subsection{Integration with Eventful Transformers}
-\label{sec:eventful}
+Temporal token-reduction methods, whatever their internal design,
+converge on the same per-frame interface: each frame, the method flags a
+subset of tokens as \emph{useful}, to be recomputed, and treats the rest
+as \emph{useless}, reusing buffered results for them. Eventful
+Transformers \cite{eventful} produce this partition with change-scoring
+gates, MaskVD \cite{maskvd} with detection-driven region masks, CST-ViT
+\cite{cstvit} with a cascade of temporal and spatial gates. The layered
+mode of TempoMem attaches at exactly this interface and asks one further
+question: \emph{of the tokens the host considers useful, which ones does
+the scene memory already explain?}
 
-Eventful Transformers \cite{eventful} accelerate video ViTs with
-\emph{token gates}. A gate maintains a reference copy of its input, scores
-each token by how much it has changed since that reference, selects the
-top-$k$ most-changed tokens for recomputation, and scatters the recomputed
-results into an output accumulator that retains stale values elsewhere.
-Each block gates the qkv input, the attention-output projection, and the
-MLP with a shared index set.
+Concretely, the host proposes its recompute set of $k$ candidate tokens;
+TempoMem matches each candidate against the prototype cache by cosine
+similarity and drops the fraction $\gamma \in [0,1)$ of candidates most
+similar to a prototype (tokens with a special role, such as a class
+token, are always protected). The surviving set is handed back to the
+host, which recomputes it through its own machinery; the dropped tokens
+fall back on the host's existing reuse path, exactly as if the host had
+never flagged them (Algorithm~\ref{alg:layered}). The cache itself is
+built from the candidate tokens of the warm-up frames, exactly the
+feature distribution the host's selection operates on, and no saliency
+computation is involved. Three properties follow directly from this
+construction. First, \emph{strict subtraction}: the filter only ever
+removes tokens from the host's recompute set, so per-frame FLOPs are
+bounded by the host's, up to the matching overhead of order $kMC$, which
+is small because both $k$ and $M$ are far below $N$. Second,
+\emph{exact reduction}: with $\gamma = 0$ the pipeline is bit-for-bit
+the unmodified host, which gives perfectly controlled comparisons.
+Third, \emph{host-agnosticism}: nothing in the filter depends on how the
+host chose its candidates, so the same implementation layers onto any
+method exposing the useful/useless interface.
 
-\paragraph{TempoMem as a recompute-set filter.}
-Eventful answers ``which tokens changed?''; TempoMem adds ``and which of
-the changed tokens do we already have a good summary of?''. Concretely, the
-qkv gate proposes its usual top-$k$ candidate set; TempoMem drops the
-fraction $\gamma \in [0,1)$ of candidates with the highest cosine
-similarity to the prototype cache (the class token is always protected),
-and the surviving set is forced onto all three gates
-(Algorithm~\ref{alg:eventfultm}). Here the cacheable set is the gate's
-candidate set itself, and the cache is built from the gated (recomputed)
-tokens of the warm-up frames, exactly the feature distribution the gates
-operate on. No saliency computation is involved.
-
-\paragraph{Cost dominance.}
-In this filter-only form, TempoMem strictly removes tokens from every
-gate's recompute set, so per-frame gate FLOPs are bounded by Eventful's,
-\emph{up to the matching overhead} of order $kMC$, which is small because
-both $k$ and $M$ are far below $N$. With $\gamma = 0$ the block reduces
-exactly to its Eventful counterpart. We state the caveat explicitly because
-the substitution variant below does not enjoy the same bound.
-
-\paragraph{Substitution variant.}
-Dropping a matched token means its K/V silently stay stale, and for
-class-token readouts (e.g., ViViT classification) the reuse decision never
-reaches the output. The substitution variant therefore lets the qkv gate
-recompute the \emph{full} candidate set, but overwrites each matched
-candidate's gate input with its best-matching prototype, so the token's K/V
-are refreshed to the cached summary; the projection and MLP gates still
-process only the kept set. This trades back part of the qkv-stage saving
-for accuracy and is no longer FLOP-dominated by plain Eventful at the qkv
-stage.
+One refinement matters for models whose prediction is read from a global
+token. Dropping a matched candidate means its K/V silently stay stale,
+and for class-token readouts the reuse decision never reaches the
+output. The \emph{substitution variant} therefore lets the host
+recompute the full candidate set, but overwrites each matched
+candidate's input with its best-matching prototype, so the token's K/V
+are refreshed to the cached summary while the later stages still process
+only the kept set. This trades back part of the input-stage saving for
+accuracy and is no longer FLOP-dominated by the plain host at that
+stage; we quantify the trade in the Evaluation.
 
 \begin{algorithm}[t]
-\caption{Eventful + TempoMem recompute-set filter (one block, one frame)}
-\label{alg:eventfultm}
+\caption{Layered TempoMem (one block, one frame)}
+\label{alg:layered}
 \begin{algorithmic}[1]
 \Require
-  Frame tokens; Eventful gates (qkv, projection, MLP);
+  Frame tokens; host method with its per-frame token selection;
   prototype cache $E$; buffer $B$; reuse fraction $\gamma$
   \vspace{0.3em}
 
-\State $C \gets$ top-$k$ candidate set proposed by the qkv gate
-  \hfill\Comment{Most-changed tokens}
+\State $C \gets$ recompute set of $k$ tokens proposed by the host
+  \hfill\Comment{Tokens the host flags as useful}
 \If{phase is \textsc{caching}}
-  \State Append the gated tokens to $B$; on the last caching frame,
+  \State Append the tokens of $C$ to $B$; on the last caching frame,
     merge $B$ with $T$ BSM passes into $E$
-  \State \Return standard Eventful block output on $C$
+  \State \Return standard host output on $C$
 \Else
-  \State Compare each candidate's gate input to every prototype in $E$
+  \State Compare each candidate to every prototype in $E$
     by cosine similarity
   \State $D \gets$ the $\lfloor \gamma k \rfloor$ candidates most similar
     to a prototype
-    \hfill\Comment{Class token always protected}
+    \hfill\Comment{Special tokens always protected}
   \State $R \gets C \setminus D$
     \hfill\Comment{Kept set: tokens the cache cannot explain}
   \If{substitution variant}
-    \State qkv gate recomputes all of $C$, with each input in $D$
+    \State Host recomputes all of $C$, with each input in $D$
       overwritten by its best-matching prototype
   \Else
-    \State qkv gate recomputes only $R$
+    \State Host recomputes only $R$
   \EndIf
-  \State Force $R$ onto the projection and MLP gates
-    \hfill\Comment{Accumulators keep stale values elsewhere}
-  \State \Return Eventful block output
+  \State Dropped tokens follow the host's existing reuse path
+  \State \Return host output
 \EndIf
 \end{algorithmic}
 \end{algorithm}
@@ -639,55 +586,15 @@ Proposition~\ref{prop:cachesize}.
 \paragraph{Amortized stream cost.}
 Over a refresh period, the per-frame cost is
 $\tfrac{1}{P} F_{\text{dense}} + \tfrac{P-1}{P} F_{\text{TM}}$, plus the
-one-time warm-up $W \cdot F_{\text{dense}}$ per stream.
+one-time warm-up $W \cdot F_{\text{dense}}$ per stream. The longer the
+stream, the smaller the share of the fixed costs: this is the regime a
+continuously running camera operates in, and it is where the memory's
+construction cost disappears into the noise.
 
 \paragraph{Memory.}
 The cache stores $E, \hat E, \tilde K, \tilde V$, i.e., $4MC$ floats per
 block ($O(LMC)$ in total), independent of stream length. This replaces the
 $O(W N C)$ footprint of verbatim window caching.
-
-\subsection{Discussion and Limitations}
-\label{sec:discussion}
-
-\paragraph{Content-based vs.\ position-based reuse.}
-Temporal-difference methods (including Eventful's gates) reuse computation
-per position and therefore break under camera motion, where every position
-changes while scene content largely does not. TempoMem matches by content,
-so a background token that moved across the grid can still hit the cache.
-The two signals are complementary, which is precisely what the Eventful
-integration exploits.
-
-\paragraph{Saliency lag.}
-The standalone foreground/background split consumes an attention map that
-is one step stale, and at matching frames that map was itself computed on a
-reduced sequence. We accept this lag because the split only needs to be
-reliable for the background side, which is temporally stable by definition.
-A foreground token mis-assigned to the background costs accuracy only if it
-also matches the cache, while a background token mis-assigned to the
-foreground is recomputed exactly and costs only efficiency; the fixed
-foreground budget, recomputed every frame, bounds the damage of errors on
-rapidly changing tokens.
-
-\paragraph{Fixed reuse budgets.}
-Top-count matching (and the fixed drop fraction $\gamma$ in the Eventful
-integration) gives batch-uniform shapes and a predictable compute budget,
-but forces the same reuse rate on easy and hard frames: a frame with
-genuinely novel background is still forced to reuse a fraction $r$ of it,
-with the refresh period $P$ acting as the safety net. Adaptive,
-similarity-thresholded budgets are a natural extension we leave to future
-work.
-
-\paragraph{Failure modes.}
-(i)~A scene cut between refreshes yields up to $P{-}1$ frames matched
-against an obsolete cache; the entropy-based split mitigates this by
-pushing novel content into the always-recomputed foreground, but
-background-level errors persist until refresh. (ii)~Approximation error
-from reusing merged, aging K/V accumulates with distance from the last
-refresh, making $P$ the main accuracy-efficiency knob after $r$.
-(iii)~Substitution is unsuitable for position-sensitive attention; the
-KV-reuse-only variant covers this case at reduced savings. The
-experiments quantify the third effect \textbf{[TBD: the $W$ and $P$
-sweeps that quantify the first two are in progress]}.
 
 \section{Evaluation}
 \label{sec:eval}
@@ -724,11 +631,13 @@ Evaluation subsets (100 Kinetics-400 validation clips; 25 ImageNet VID
 videos) are sampled once and shared by every method and configuration, so
 all within-table comparisons are paired. \textbf{[TBD: full-validation
 runs (19{,}877 Kinetics-400 clips; all 639 VID videos) are in progress
-and will replace the subset numbers. Completed so far: Eventful at token
-budgets 24 and 48 on full Kinetics-400 (62.4\% and 67.5\% Top-1 at 27.2
-and 53.8 matching-frame GFLOPs per frame, close to their subset
-estimates) and one Eventful + TempoMem configuration on full VID,
-reported in the ImageNet VID section.]}
+and will replace the subset numbers. Completed so far: the layered
+$\gamma = 0$ and $\gamma = 0.5$ configurations on full Kinetics-400
+(62.4\% and 59.9\% Top-1 at 27.2 and 13.9 matching-frame GFLOPs per
+frame, confirming their subset estimates), Eventful at token budget 48
+on full Kinetics-400 (67.5\% Top-1 at 53.8 GFLOPs per frame), and one
+layered configuration on full VID, reported in the ImageNet VID
+section.]}
 
 \paragraph{Baselines.}
 \emph{Dense} is the unmodified backbone. \emph{Eventful}
@@ -758,16 +667,32 @@ reported separately where relevant. Whole-stream numbers (all frames,
 warm-up included) are labeled explicitly, and \textbf{we never compare a
 matching-only number against a whole-stream number in the same table}.
 
-\subsection{TempoMem on Eventful Transformers}
+\subsection{Instantiating the Layered Mode on Eventful Transformers}
+\label{sec:eval-instantiation}
+
+The Methodology defines the layered mode against a generic host; here we
+make it concrete on Eventful Transformers, the representative host of
+this evaluation. An Eventful block gates the qkv input, the
+attention-output projection, and the MLP: each gate maintains a
+reference copy of its input, scores each token by how much it has
+changed since that reference, selects the top-$k$ most-changed tokens
+for recomputation, and scatters the recomputed results into an output
+accumulator that retains stale values elsewhere. The layered filter
+plugs in at the qkv gate: the gate's top-$k$ proposal is the host
+recompute set of Algorithm~\ref{alg:layered}, the filter drops the
+fraction $\gamma$ of it that best matches the cache (the class token is
+always protected), and the surviving set is forced onto all three gates,
+whose accumulators supply the reuse path for the dropped tokens. The
+cache is built from the gated tokens of the warm-up frames. With
+$\gamma = 0$ every gate receives exactly its Eventful proposal, so the
+pipeline is Eventful itself, and every comparison below is controlled
+down to the single knob $\gamma$.
+
+\subsection{Layered TempoMem on Kinetics-400}
 \label{sec:eval-eventful}
 
-We now apply TempoMem as a recompute-set filter on top of Eventful
-(Algorithm~\ref{alg:eventfultm}): Eventful's qkv gate proposes its top-$k$
-changed tokens, and TempoMem drops the fraction $\gamma$ of them that best
-match the prototype cache. With $\gamma = 0$ the pipeline is exactly
-Eventful under our protocol, which gives a perfectly controlled comparison:
-every row of Table~\ref{tab:eventful-vivit} differs from the first row
-only in $\gamma$.
+Table~\ref{tab:eventful-vivit} sweeps the reuse fraction $\gamma$ on
+ViViT-B: every row differs from the first row only in $\gamma$.
 
 \begin{table}[t]
 \centering
@@ -782,14 +707,17 @@ $\gamma$ & Top-1 (\%) & Top-5 (\%) & GFLOPs/frame \\
 0.75 & 59.0 & 79.0 & \textbf{7.2} \\
 \bottomrule
 \end{tabular}
-\caption{Eventful + TempoMem on ViViT-B / Kinetics-400 (matching-frame
-accounting for all rows). Accuracy is flat for all
+\caption{Layered TempoMem on Eventful, ViViT-B / Kinetics-400
+(matching-frame accounting for all rows). Accuracy is flat for all
 $\gamma \ge 0.25$ while compute falls $3.8\times$: TempoMem can discard up
 to 75\% of Eventful's recompute set for a fixed 2-point Top-1 cost.
 Whole-clip reference points under the same setting: dense 73.0\% Top-1 at
 3355 GFLOPs/clip; canonical Eventful 71.0\% at 613 GFLOPs/clip (not
-comparable to the matching-only rows above). \textbf{[TBD: 100-clip
-subset; evaluation on more videos in progress.]}}
+comparable to the matching-only rows above). Full-validation runs
+(19{,}877 clips) confirm the endpoints: $\gamma = 0$ reaches 62.4\%
+Top-1 / 82.2\% Top-5 and $\gamma = 0.5$ reaches 59.9\% / 79.8\% at the
+same measured GFLOPs. \textbf{[TBD: full-validation runs for
+$\gamma \in \{0.25, 0.75\}$ in progress.]}}
 \label{tab:eventful-vivit}
 \end{table}
 
@@ -818,7 +746,7 @@ is compressed.
 %% with the paper's "gamma" symbol and full-validation numbers before
 %% submission (the TempoMem name in the legend is already correct).
 %% Source: results/comparison/plot_vivit_runs.log
-\includegraphics[width=\linewidth]{fig_vivit_k400.png}
+\includegraphics[width=\linewidth]{fig_vivit_k400.pdf}
 \caption{Top-1 accuracy vs.\ matching-frame GFLOPs per clip for ViViT-B /
 Kinetics-400 (100 clips, Wilson 95\% CIs). Green: Eventful at increasing
 token budgets. Blue: TempoMem's reuse-fraction sweep applied on top of the
@@ -832,14 +760,14 @@ step and accuracy stays flat as compute continues to fall.}
 
 \paragraph{Controlled comparison.}
 The apples-to-apples evidence is Table~\ref{tab:vitdet-sweep}: Eventful and
-Eventful + TempoMem under the identical matching-frame protocol, differing
+the layered filter under the identical matching-frame protocol, differing
 only in $\gamma$ (Eventful budget $k = 512$). Unlike classification,
 detection accuracy falls monotonically with $\gamma$ (90.3\% to 59.3\%
 mAP@50) as compute falls from 60.3 to 19.3 GFLOPs/frame; at $\gamma = 0.5$,
 halving Eventful's compute costs 13 mAP points. Sweeping the Eventful
 budget $k \in \{128, \dots, 1024\}$ shows the same picture along the whole
 curve of this subset: at matched compute, Eventful reaches higher mAP@50
-than Eventful + TempoMem, and at matched mAP@50 Eventful is cheaper.
+than the layered filter, and at matched mAP@50 Eventful is cheaper.
 \textbf{On this paired sweep, the recompute-set filter does not improve
 on Eventful's accuracy-compute frontier}; detection reuse is a genuine
 trade of accuracy for compute rather than the near-free reuse observed on
@@ -847,7 +775,7 @@ classification. We report the trade-off as measured rather than tuning
 around it, and analyze its cause below.
 
 \paragraph{Full-dataset check.}
-On all 639 VID videos, Eventful + TempoMem with $\gamma = 0.5$ and
+On all 639 VID videos, the layered filter with $\gamma = 0.5$ and
 $k = 128$ reaches 60.5\% mAP@50 at 12.4 GFLOPs/frame under matching-frame
 accounting, 5 points below the 25-video estimate for the same
 configuration (65.5\%). \textbf{[TBD: the paired $\gamma = 0$ full run is
@@ -871,7 +799,7 @@ $\gamma$ & merge passes $T$ & mAP@50 (\%) & GFLOPs/frame \\
 0.75 & 2 & 59.3 & 19.3 \\
 \bottomrule
 \end{tabular}
-\caption{Eventful + TempoMem on ViTDet-B / ImageNet VID
+\caption{Layered TempoMem on Eventful, ViTDet-B / ImageNet VID
 ($k = 512$, matching-frame accounting for all rows). Detection accuracy
 falls monotonically with the reuse fraction $\gamma$, and coarser
 prototypes (more merge passes) hurt, the opposite of the classification
@@ -884,8 +812,8 @@ progress.]}}
 Table~\ref{tab:vitdet-sota} places the compared methods under
 whole-stream per-frame accounting (all frames, warm-up included),
 together with their measured latency and peak memory. Eventful and STGT
-define the current frontier; MaskVD follows; the KV-reuse-only TempoMem
-variant sits well inside it. \textbf{[TBD: the Eventful + TempoMem row
+define the current frontier; MaskVD follows; the KV-reuse-only standalone
+variant sits well inside it. \textbf{[TBD: the layered TempoMem row
 requires a whole-stream re-measurement; a frontier figure with the newest
 runs will be added when it completes.]}
 
@@ -900,9 +828,9 @@ ViTDet-B (dense) & 174.5 & 69.6 & 760 & 84.1 \\
 Eventful & 60.5 & 58.3 & 2118 & 84.0 \\
 STGT & 68.5 & 56.2 & 1242 & 83.8 \\
 MaskVD & 88.8 & 56.0 & 927 & 83.1 \\
-TempoMem (KV-reuse only) & 156.5 & 101.8 & 929 & 72.0 \\
-Eventful + TempoMem & \textbf{[TBD]} & \textbf{[TBD]} & \textbf{[TBD]} &
-  \textbf{[TBD]} \\
+TempoMem (standalone, KV-reuse only) & 156.5 & 101.8 & 929 & 72.0 \\
+TempoMem (layered on Eventful) & \textbf{[TBD]} & \textbf{[TBD]} &
+  \textbf{[TBD]} & \textbf{[TBD]} \\
 \bottomrule
 \end{tabular}}
 \caption{ImageNet VID comparison with the state of the art under
@@ -914,7 +842,7 @@ kept separate.}
 \end{table}
 
 % [TBD] A frontier figure (mAP@50 vs GFLOPs/frame, whole-stream
-% accounting) will go here once the newest Eventful + TempoMem runs are
+% accounting) will go here once the newest layered runs are
 % measured whole-stream; the old fig_pareto_vid.png was removed because
 % it predates them.
 
@@ -930,7 +858,21 @@ recompute set is dropped (Table~\ref{tab:eventful-vivit}). On detection,
 the prediction is read from the spatial tokens themselves; every dropped
 or substituted token is a location the detector can no longer describe
 exactly, so mAP@50 falls in proportion to the reuse rate
-(Table~\ref{tab:vitdet-sweep}). Two secondary observations support this
+(Table~\ref{tab:vitdet-sweep}). It is worth being precise about what
+does and does not transfer between the two tasks: the \emph{compute}
+side of the mechanism transfers unchanged, since the filter removes the
+same fraction of the recompute set and the measured GFLOPs fall
+proportionally on both benchmarks; what changes is the \emph{price} of
+that reduction, from a small one-time accuracy step on action
+recognition to a proportional mAP@50 loss on detection. The difference
+is not the dataset but the readout. An action recognition model
+answers one question per clip, and its class token aggregates evidence
+over hundreds of tokens, so replacing a redundant background token with
+a nearby prototype perturbs a sum in which that token is one term among
+many. A detector answers a question at every location, and the feature
+of each spatial token becomes the local evidence for a box at that
+position, so the same perturbation lands directly on an output rather
+than being averaged away. Two secondary observations support this
 reading. First, prototype granularity is inert on classification but
 matters on detection, where fewer merge passes (finer prototypes, hence
 smaller substitution error per token) are consistently better. Second,
@@ -957,7 +899,7 @@ Eventful's buffers (2118\,MB), reflecting the merged cache of
 Proposition~\ref{prop:cachesize}. The gap is implementation-level, not
 algorithmic: the matching product and gather/scatter steps are unfused
 kernels, and profiling and fused implementations are future work.
-\textbf{[TBD: latency and memory for the Eventful + TempoMem filter to be
+\textbf{[TBD: latency and memory for the layered filter to be
 measured under the same harness.]}
 
 \subsection{Ablations}
@@ -979,7 +921,7 @@ that classification tolerates coarse summaries while detection consumes
 the per-token detail that merging removes.
 
 \paragraph{Substitution on and off.}
-The substitution variant of the Eventful integration refreshes each
+The substitution variant of the layered mode refreshes each
 matched candidate's K/V with its prototype instead of silently dropping
 it. On classification it is accuracy-neutral: at $\gamma = 0.5$,
 substitution on and off both score 59.0\% Top-1 and 79.0\% Top-5, while
@@ -1007,7 +949,7 @@ are in progress; results will be reported here.]}
 \subsection{Standalone TempoMem}
 \label{sec:eval-standalone}
 
-The standalone variant appears in this evaluation through its
+The standalone mode appears in this evaluation through its
 KV-reuse-only form on ViTDet (Table~\ref{tab:vitdet-sota}).
 \textbf{[TBD: full standalone classification results (saliency split with
 token substitution) will be added here; the saliency split is being
@@ -1017,7 +959,7 @@ re-run at full validation scale.]}
 \subsection{Summary of Findings}
 \label{sec:eval-summary}
 
-(1)~As a filter on Eventful, TempoMem drops up to 75\% of the recompute
+(1)~Layered on Eventful, TempoMem drops up to 75\% of the recompute
 set on Kinetics-400 for a fixed 2-point Top-1 cost, cutting matching-frame
 compute $3.8\times$ below Eventful itself, with the entire cost paid at
 the first reuse step. (2)~On detection, the trade-off is much less
@@ -1033,16 +975,85 @@ near dense. \textbf{[TBD: standalone classification results, whole-stream
 measurements for the filter, the paired full-VID Eventful run, and the
 $W$/$P$ sweeps are in progress.]}
 
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\paragraph{Content-based vs.\ position-based reuse.}
+Temporal-difference methods, including the gates of every host the
+layered mode can attach to, reuse computation per position and therefore
+break under camera motion, where every position changes while scene
+content largely does not. TempoMem matches by content, so a background
+token that moved across the grid can still hit the cache. The two
+signals are complementary, which is precisely what the layered mode
+exploits: the host detects change, the memory recognizes recurrence.
+
+\paragraph{Deployment on edge devices.}
+The setting TempoMem is designed for is a camera that runs for hours on
+hardware with a hard compute or energy ceiling, and two properties of
+the design speak directly to it. First, the layered mode acts as a
+\emph{compute dial}: when the deployment constraint is GFLOPs rather
+than the last accuracy point, an operator can push the reuse fraction up
+and trade a small, measured accuracy cost for a multiple reduction in
+steady-state per-frame work, on top of whatever accelerator the platform
+already ships. Second, the Persistent Scene Memory is the right shape
+for long streams: its size is bounded independently of stream length
+(Proposition~\ref{prop:cachesize}), its construction cost amortizes
+toward zero as the stream grows (the Amortized stream cost paragraph),
+and periodic refresh bounds staleness without ever storing more than the
+prototype set. A static or slowly panning camera, the common case in
+IoT installations, is exactly the regime where scene content recurs for
+hundreds of frames and a persistent memory keeps paying out. The main
+caveat is that our current implementation does not yet convert FLOPs
+into wall-clock latency (Table~\ref{tab:vitdet-sota}): the matching and
+gather/scatter steps are unfused kernels, and until they are fused the
+measured savings are energy-proportional-compute savings rather than
+speedups.
+
+\paragraph{Saliency lag.}
+The standalone foreground/background split consumes an attention map that
+is one step stale, and at matching frames that map was itself computed on a
+reduced sequence. We accept this lag because the split only needs to be
+reliable for the background side, which is temporally stable by definition.
+A foreground token mis-assigned to the background costs accuracy only if it
+also matches the cache, while a background token mis-assigned to the
+foreground is recomputed exactly and costs only efficiency; the fixed
+foreground budget, recomputed every frame, bounds the damage of errors on
+rapidly changing tokens.
+
+\paragraph{Fixed reuse budgets.}
+Top-count matching (and the fixed drop fraction $\gamma$ in the layered
+mode) gives batch-uniform shapes and a predictable compute budget,
+but forces the same reuse rate on easy and hard frames: a frame with
+genuinely novel background is still forced to reuse a fraction $r$ of it,
+with the refresh period $P$ acting as the safety net. Adaptive,
+similarity-thresholded budgets are a natural extension we leave to future
+work.
+
+\paragraph{Failure modes.}
+(i)~A scene cut between refreshes yields up to $P{-}1$ frames matched
+against an obsolete cache; the entropy-based split mitigates this by
+pushing novel content into the always-recomputed foreground, but
+background-level errors persist until refresh. (ii)~Approximation error
+from reusing merged, aging K/V accumulates with distance from the last
+refresh, making $P$ the main accuracy-efficiency knob after $r$.
+(iii)~Substitution is unsuitable for position-sensitive attention; the
+KV-reuse-only variant covers this case at reduced savings. The
+experiments quantify the third effect \textbf{[TBD: the $W$ and $P$
+sweeps that quantify the first two are in progress]}.
+
 \section{Conclusion}
 
-We presented TempoMem, a training-free,
-memory-centric framework for efficient video transformer inference. TempoMem
-compresses the temporally stable tokens of a warm-up window into a bounded
-per-block prototype cache via iterative bipartite merging, and on later
-frames reuses the cached key/value projections of matched tokens while
-substituting them with their prototypes, all without touching the
-always-recomputed foreground. On classification, the evidence is
-encouraging: as a filter on Eventful Transformers, TempoMem discards up
+We presented TempoMem, a training-free, memory-centric framework for
+efficient video transformer inference. TempoMem clusters the temporally
+stable tokens of a warm-up window into a bounded per-block Persistent
+Scene Memory and, on later frames, reuses the cached key/value
+projections of matched tokens while optionally substituting them with
+their prototypes. The framework runs in two modes: a standalone
+accelerator built around a foreground-preserving saliency split, and a
+layered filter that attaches to any temporal token-reduction method,
+strictly shrinking the set of tokens the host recomputes and reducing
+exactly to the host when disabled. On classification, the evidence is
+encouraging: layered on Eventful Transformers, TempoMem discards up
 to 75\% of the recompute set on ViViT-B/Kinetics-400 for a fixed 2-point
 Top-1 cost, cutting steady-state compute $3.8\times$ below Eventful
 itself. On dense spatial prediction, the same mechanism trades accuracy

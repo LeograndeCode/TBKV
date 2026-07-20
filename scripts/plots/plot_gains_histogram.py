@@ -73,11 +73,16 @@ def parse_dense_style(output_txt, frames_per_clip=16):
     return top1, flops / 1e9 / frames_per_clip
 
 
-def first_existing(candidates):
+def first_parseable(candidates, parser):
+    """First candidate that exists AND parses — an in-progress run touches
+    its output.txt before writing results, so existence alone is not enough."""
     for path, tag in candidates:
         if Path(path).exists():
-            return Path(path), tag
-    return None, None
+            try:
+                return parser(path), Path(path), tag
+            except (IndexError, ValueError):
+                continue
+    return None, None, None
 
 
 # (label, color, parser, [(output.txt candidates, provenance tag)])
@@ -89,12 +94,13 @@ RUNS = [
     ("Eventful", BLUE, parse_eventful_style, [
         (VIVIT_RESULTS / "eventful_tbkv_24" / "output.txt", "FULL"),
     ]),
+    # The weights=... override contains a slash, so OmegaConf's run name nests
+    # a directory level: <name>-weights=weights/vivit_b_kinetics400.pth/.
     ("TempoMem\n(raw cache)", GREEN, parse_standalone_style, [
-        (VIVIT_RESULTS / "tbkv_raw-weights=weights/vivit_b_kinetics400.pth"
-         / "output.txt", "FULL"),
-        (VIVIT_RESULTS
-         / "tbkv_raw-n_items=100-weights=weights/vivit_b_kinetics400.pth"
-         / "output.txt", "PRELIM 100"),
+        (VIVIT_RESULTS / "tbkv_raw-weights=weights"
+         / "vivit_b_kinetics400.pth" / "output.txt", "FULL"),
+        (VIVIT_RESULTS / "tbkv_raw-n_items=100-weights=weights"
+         / "vivit_b_kinetics400.pth" / "output.txt", "PRELIM 100"),
     ]),
     ("TempoMem", MAGENTA, parse_eventful_style, [
         (VIVIT_RESULTS / "eventful_tbkv" / "output.txt", "FULL"),
@@ -105,11 +111,11 @@ RUNS = [
 def main():
     labels, colors, top1s, gflops, tags = [], [], [], [], []
     for label, color, parser, candidates in RUNS:
-        path, tag = first_existing(candidates)
-        if path is None:
+        parsed, path, tag = first_parseable(candidates, parser)
+        if parsed is None:
             print(f"WARNING: no results yet for {label!r}; skipping")
             continue
-        top1, gf = parser(path)
+        top1, gf = parsed
         labels.append(label)
         colors.append(color)
         top1s.append(top1)
@@ -125,8 +131,8 @@ def main():
     base_top1 = top1s[0]
 
     fig, (ax1, ax2) = plt.subplots(
-        1, 2, figsize=(7.2, 2.9), dpi=150,
-        gridspec_kw={"wspace": 0.32},
+        1, 2, figsize=(8.8, 3.0), dpi=150,
+        gridspec_kw={"wspace": 0.28},
     )
     x = range(len(labels))
 
@@ -137,7 +143,8 @@ def main():
         ax.set_axisbelow(True)
         ax.grid(axis="y", color="#e6e5e1", linewidth=0.8)
         ax.set_xticks(list(x))
-        ax.set_xticklabels(labels, fontsize=8, color=INK)
+        ax.set_xticklabels(labels, fontsize=7.5, color=INK)
+        ax.margins(x=0.06)
 
     # ── Panel A: steady-state compute ────────────────────────────────────
     bars = ax1.bar(x, gflops, width=0.55, color=colors, zorder=3)
@@ -149,10 +156,10 @@ def main():
         if i > 0:
             ax1.annotate(f"×{base_gf / gf:.1f} less",
                          (bar.get_x() + bar.get_width() / 2, gf),
-                         ha="center", va="bottom", fontsize=7.5,
+                         ha="center", va="bottom", fontsize=7,
                          color=INK_2, fontweight="bold" if i == len(bars) - 1
                          else "normal",
-                         xytext=(0, 13), textcoords="offset points")
+                         xytext=(0, 12), textcoords="offset points")
     ax1.set_title("Compute per matching frame", fontsize=9, color=INK)
 
     # ── Panel B: accuracy ────────────────────────────────────────────────

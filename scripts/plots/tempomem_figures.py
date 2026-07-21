@@ -49,7 +49,11 @@ mpl.rcParams.update({
 # GFLOPs = MATCHING pass only (the caching pass is identical for every method,
 # so it is excluded; base has no caching pass and is shown as a reference line).
 # Runs: results/evaluate/vivit_kinetics400/{eventful_tbkv_24,eventful_tbkv_48,
-# eventful_tbkv}; r=96 measured with the final_96 checkpoint.
+# eventful_tbkv_96, eventful_tbkv}; r=96 measured with the final_96
+# checkpoint. eventful_tbkv_24/48 ran in this repo; eventful_tbkv_96 and
+# eventful_tbkv_48_cr05 (TempoMem on top of r=48) were measured on a
+# different server -- see the provenance note in each result dir's
+# output.txt.
 VIVIT_N = 19877
 VIVIT = {
     "base":     {"gflops": 3359, "top1": 73.0},   # vanilla, whole clip
@@ -60,9 +64,11 @@ VIVIT = {
         (48, 860, 67.54),   # Top-5 87.26, caching 1016 + matching 860  = 1877
         (96, 1711, 75.71),  # Top-5 92.35, caching 1814 + matching 1711 = 3525
     ],
-    # TempoMem on top of Eventful r=24, across cache_reuse rho.
-    "tempomem": [   # (rho, matching GFLOPs/clip, Top-1 %)
-        (0.50, 222, 59.85),  # Top-5 79.83, caching 618 + matching 222 = 840
+    # TempoMem at fixed cache_reuse=rho=0.5, across r (paralleling the
+    # Eventful r-sweep above). No r=96 point yet -- no rho=0.5-on-r=96 run.
+    "tempomem": [   # (r, matching GFLOPs/clip, Top-1 %)
+        (24, 222, 59.85),  # Top-5 79.83, caching 618  + matching 222 = 840
+        (48, 435, 58.37),  # Top-5 78.62, caching 1016 + matching 435 = 1451
     ],
 }
 
@@ -130,24 +136,25 @@ def fig_vivit():
         ax.annotate(f"r={r}", (g, t), textcoords="offset points",
                     xytext=(dx, dy), ha=ha, fontsize=7.5, color=C_EVENTFUL)
 
-    # TempoMem on top of Eventful r=24, across rho.
+    # TempoMem at fixed rho=0.5, across r.
     tm = sorted(VIVIT["tempomem"], key=lambda p: p[1])
     tm_x = [g for _, g, _ in tm]
     tm_y = [t for _, _, t in tm]
     ax.errorbar(tm_x, tm_y, yerr=_errbars(tm_y, VIVIT_N), fmt="-o",
                 color=C_TEMPOMEM, linewidth=1.8, markersize=5.5, capsize=2.5,
                 elinewidth=0.9, zorder=5,
-                label="Eventful r=24 + TempoMem (ours)")
-    for rho, g, t in tm:
-        if rho == 0.0:
-            continue   # anchor point, coincides with Eventful r=24
-        dy = -27 if rho == 0.9 else -15
-        ax.annotate(f"$\\rho$={rho:g}", (g, t), textcoords="offset points",
-                    xytext=(0, dy), ha="center", fontsize=7.5, color=C_TEMPOMEM)
+                label="Eventful + TempoMem ($\\rho$=0.5, varying r)")
+    tm_off = {24: (0, -15, "center"), 48: (0, -15, "center")}
+    for r, g, t in tm:
+        dx, dy, ha = tm_off.get(r, (0, -15, "center"))
+        ax.annotate(f"r={r}", (g, t), textcoords="offset points",
+                    xytext=(dx, dy), ha=ha, fontsize=7.5, color=C_TEMPOMEM)
 
     ax.set_xlim(0, None)
-    ax.set_ylim(0, 80)
-    ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(10))
+    # Zoomed to the data band (not 0-80) so the Wilson CI whiskers -- a few
+    # tenths of a point wide at n=19,877 -- are actually visible.
+    ax.set_ylim(55, 78)
+    ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
     ax.set_xlabel("GFLOPs / clip")
     ax.set_ylabel("Top-1 accuracy (%)")
     ax.set_title("Effect of TempoMem on the Eventful Transformer\n"

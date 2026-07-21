@@ -1,0 +1,11 @@
+Evaluation
+[measured on a different server -- not run through this repo checkout;
+ numbers supplied by the author, config.yml already present in this dir]
+
+EventfulTBKV — ViViT / Kinetics-400
+  Videos evaluated : 19877
+  Caching frames   : 4   frame_stride: 1
+  Top-1 Accuracy   : 58.37%
+  Top-5 Accuracy   : 78.62%
+  GFLOPs/clip      : caching 1016 + matching 435 = TOTAL 1451
+  (Eventful temporal_24 reference, whole-clip: 613 GFLOPs, Top-1 71%)

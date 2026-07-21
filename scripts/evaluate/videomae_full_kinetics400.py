@@ -10,7 +10,11 @@ clips in memory. Progress is checkpointed so the run can resume.
 Protocol per video (same as the subset scripts): 2 x 16-frame clips sampled
 uniformly, center crop 224, ImageNet normalization.
 - baseline: both clips at full compute (ToMe model with r=0; exact).
-- tbkv:     clip 1 caching (full compute), clip 2 matching.
+- tbkv:     replay_matching -- the first `cache_frames` frames of clip 1 run
+  as a short warmup clip at full compute (caches built; logits discarded,
+  FLOPs excluded from totals), then ALL clips (including the frames used
+  for caching) are replayed in matching mode, scored and counted. Matches
+  the protocol tbkv_videomae_kinetics400.py uses (2026-07-20).
 - tome_r*:  both clips with r tokens merged per block.
 
 Usage:
@@ -49,7 +53,8 @@ def _add_counts(stats, counts):
 
 
 @torch.no_grad()
-def run_video(clips, label, device, model_tbkv, model_tome, tome_rs, stats):
+def run_video(clips, label, device, model_tbkv, model_tome, tome_rs, stats,
+              cache_frames):
     n_clips = len(clips)
     clips = [clip.to(device) for clip in clips]
 
@@ -64,14 +69,20 @@ def run_video(clips, label, device, model_tbkv, model_tome, tome_rs, stats):
     _add_counts(stats["base"], model_tome.total_counts())
     stats["base"]["n_clips"] += n_clips
 
-    # TBKV: clip 1 caching, remaining clips matching.
+    # TBKV replay_matching: cache_frames-frame warmup clip builds the
+    # caches (discarded, FLOPs tracked separately under tbkv_cache and
+    # excluded from the headline tbkv totals), then ALL clips are replayed
+    # in matching mode -- scored and counted.
     model_tbkv.reset_caches()
     model_tbkv.set_caching(True)
     model_tbkv.clear_counts()
-    logits = [model_tbkv(clips[0])]
+    model_tbkv(clips[0][:, :, :cache_frames])
+    _add_counts(stats["tbkv_cache"], model_tbkv.total_counts())
+    stats["tbkv_cache"]["n_clips"] += 1
+
     model_tbkv.set_caching(False)
-    for clip in clips[1:]:
-        logits.append(model_tbkv(clip))
+    model_tbkv.clear_counts()
+    logits = [model_tbkv(clip) for clip in clips]
     avg = torch.cat(logits, dim=0).mean(dim=0, keepdim=True)
     c1, c5, _ = top1_top5(avg, label)
     stats["tbkv"]["correct1"] += c1
@@ -98,17 +109,25 @@ def main():
         description="Full-scale VideoMAE K400: baseline + TBKV + ToMe sweep"
     )
     parser.add_argument("--model", type=str, default="vit_b",
-                        choices=["vit_b", "vit_l"])
+                        choices=["vit_b", "vit_l", "vit_h"])
     parser.add_argument("--n_items", type=int, default=None,
                         help="number of videos (default: full val split)")
     parser.add_argument("--n_clips", type=int, default=2)
     parser.add_argument("--frames_per_clip", type=int, default=16)
     parser.add_argument("--r_match", type=float, default=0.6)
+    parser.add_argument("--cache_frames", type=int, default=4,
+                        help="warmup frames used to build the caches "
+                             "(multiple of the tubelet size 2); TBKV then "
+                             "replays ALL clips in matching mode")
     parser.add_argument("--tome_r", type=int, nargs="+",
                         default=[33, 65, 98, 130])
     parser.add_argument("--checkpoint_every", type=int, default=250)
     parser.add_argument("--output_dir", type=str, default=None)
     cli = parser.parse_args()
+
+    if cli.cache_frames % 2 != 0 or not 0 < cli.cache_frames <= cli.frames_per_clip:
+        parser.error("--cache_frames must be a positive multiple of 2 "
+                     "no larger than --frames_per_clip")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}", flush=True)
@@ -124,13 +143,13 @@ def main():
     output_dir = Path(cli.output_dir or Path(
         "results", "evaluate", "videomae_kinetics400",
         f"{size_tag}-n_items={n_items}-clips={cli.n_clips}"
-        f"-r_match={cli.r_match}",
+        f"-cache_frames={cli.cache_frames}-r_match={cli.r_match}",
     ))
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / "checkpoint.pt"
 
     methods = ["base", "tbkv"] + [f"tome_r{r}" for r in cli.tome_r]
-    stats = {m: _new_stats() for m in methods}
+    stats = {m: _new_stats() for m in methods + ["tbkv_cache"]}
     start = 0
     if checkpoint_path.exists():
         ckpt = torch.load(checkpoint_path)
@@ -153,7 +172,7 @@ def main():
         video, label = data[index]
         clips = prepare_clips(video, cli.n_clips, cli.frames_per_clip)
         run_video(clips, label, device, model_tbkv, model_tome,
-                  cli.tome_r, stats)
+                  cli.tome_r, stats, cli.cache_frames)
         n_done = index + 1
 
         if n_done % 50 == 0:
@@ -172,11 +191,15 @@ def main():
                        checkpoint_path)
 
     # ── Report ───────────────────────────────────────────────────────────
+    model_label = {"vit_b": "ViT-B/16", "vit_l": "ViT-L/16",
+                   "vit_h": "ViT-H/16"}.get(cli.model, cli.model)
     lines = [
         "=" * 72,
-        f"VideoMAE {'ViT-L/16' if cli.model == 'vit_l' else 'ViT-B/16'} "
+        f"VideoMAE {model_label} "
         f"K400 val: {n_done} videos, "
-        f"{cli.n_clips}x{cli.frames_per_clip} frames, r_match={cli.r_match}",
+        f"{cli.n_clips}x{cli.frames_per_clip} frames, "
+        f"replay_matching (cache_frames={cli.cache_frames}), "
+        f"r_match={cli.r_match}",
         "=" * 72,
         f"{'method':<12} {'top1':>8} {'top5':>8} {'GFLOPs/clip':>12} "
         f"{'saved KV G/clip':>16}",
@@ -198,6 +221,20 @@ def main():
             f"{m:<12} {results[m]['top1']:>8.2%} {results[m]['top5']:>8.2%} "
             f"{flops_clip / 1e9:>12.2f} {saved / 1e9:>16.2f}"
         )
+
+    # tbkv_cache: FLOPs-only bookkeeping for the warmup pass (no predictions
+    # -- excluded from the tbkv row above and from the table itself).
+    cs = stats["tbkv_cache"]
+    cache_flops_per_video = computed_total(cs["counts"]) / max(cs["n_clips"], 1)
+    results["tbkv_cache"] = {
+        "flops_per_video": cache_flops_per_video,
+        "counts_per_clip": {k: v / max(cs["n_clips"], 1)
+                             for k, v in cs["counts"].items()},
+    }
+    lines.append(
+        f"(tbkv caching warmup, {cli.cache_frames} frames/video, excluded "
+        f"from totals above: {cache_flops_per_video / 1e9:.2f} G/video)"
+    )
     report = "\n".join(lines)
     print(report, flush=True)
 

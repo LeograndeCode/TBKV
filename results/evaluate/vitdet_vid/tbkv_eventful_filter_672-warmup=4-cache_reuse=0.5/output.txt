@@ -128,3 +128,29 @@ Counts
     linear_flops:      3.261e+10
     matmul_flops:      1.257e+10
 
+Token top k=1024
+Quadro RTX 6000
+Metrics
+    map:               0.4815
+    map_50:            0.7294
+    map_75:            0.5374
+    map_large:         0.5415
+    map_medium:        0.3364
+    map_per_class:     -1
+    map_small:         0.1171
+    mar_1:             0.4667
+    mar_10:            0.597
+    mar_100:           0.5976
+    mar_100_per_class: -1
+    mar_large:         0.6642
+    mar_medium:        0.4695
+    mar_small:         0.1829
+Counts
+    accumulator_flops: 1.241e+07
+    add_flops:         3.99e+08
+    bias_flops:        4.247e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        2.036e+08
+    linear_flops:      4.349e+10
+    matmul_flops:      1.535e+10
+

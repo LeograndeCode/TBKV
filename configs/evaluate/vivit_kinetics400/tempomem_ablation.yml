@@ -1,0 +1,23 @@
+# TempoMem (EventfulTBKV) / ViViT ablation grid on 10% of K400 val
+# (cache_reuse x merge_iterations), replay_matching protocol: cache from the
+# first frame_split frames (discarded/uncounted), matching pass replays the
+# whole clip (scored; GFLOPs/clip = matching pass only). Same grid as the
+# ViTDet/VID ablation (tbkv_eventful_filter_672, warmup=4, replay_matching).
+#
+# Identical to ablation.yml -- named "tempomem" to match the paper's method
+# name and distinguish it from tbkv_ablation.yml (the STANDALONE TBKV
+# method's local_merge_ratio x r_match ablation, a different method).
+#
+# cache_reuse/merge_iterations are list-valued, so a bare run sweeps all 16
+# combos in one process (model built/weights loaded once; each block's
+# cache_reuse/merge_iterations are plain runtime attributes, mutated
+# between combos -- see run_ablation_sweep in the eval script):
+#   eventful_tbkv_vivit_kinetics400.py tempomem_ablation
+# Override with scalars on the CLI to run a single combo instead:
+#   eventful_tbkv_vivit_kinetics400.py tempomem_ablation cache_reuse=0.25 merge_iterations=2
+_defaults:
+  - "eventful_tbkv.yml"
+n_items: 1988
+replay_matching: true
+cache_reuse: [0.25, 0.5, 0.75, 0.95]
+merge_iterations: [2, 4, 6, 8]

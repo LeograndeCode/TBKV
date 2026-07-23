@@ -30,6 +30,8 @@ from src.core.counting import (
     CountedMatmul,
 )
 
+from src.tbkv.tbkv_utils import compute_merge
+
 from .cache import Cache
 from .patch import extract_bg_fg_tokens
 from .tbkv_utils import mps_gather_workaround
@@ -213,10 +215,25 @@ class TBKVBlock(nn.Module):
         if state["caching"]:
             # Cache background tokens with K/V rows aligned to them.
             x_bg, x_fg, idx_bg, idx_fg = extract_bg_fg_tokens(x, attn_map)
+            merge_iterations = state.get("merge_iterations", 0)
+            if merge_iterations > 0:
+                _, _, merged_x_bg = compute_merge(
+                    x_bg, merge_iterations, state.get("merge_ratio", 0.5)
+                )
+            else:
+                merged_x_bg = x_bg
+            if merged_x_bg.shape[1] == idx_bg.numel():
+                k_cache = k[:, :, idx_bg, :]
+                v_cache = v[:, :, idx_bg, :]
+            else:
+                # Tokens were merged; there is no exact per-token K/V
+                # anymore. Fall back to full-frame K/V (legacy behavior,
+                # mirrors patch.py's ToMeBlock).
+                k_cache, v_cache = k, v
             self.cache = Cache(
-                k[:, :, idx_bg, :],
-                v[:, :, idx_bg, :],
-                x_bg,
+                k_cache,
+                v_cache,
+                merged_x_bg,
                 layer=self,
                 verbose=state.get("verbose", False),
             )
@@ -250,12 +267,22 @@ class VideoMAETBKV(nn.Module):
         num_frames=16,
         tubelet_size=2,
         r_match=0.6,
+        merge_iterations=0,
+        merge_ratio=0.5,
         verbose=False,
     ):
         super().__init__()
         self.state = {
             "caching": False,
             "r_match": r_match,
+            # merge_iterations=0 (default) keeps the raw-cache behavior
+            # unchanged: background tokens are cached exactly as extracted,
+            # one K/V row per token. merge_iterations>0 clusters them first
+            # via the same bipartite-matching compute_merge used by
+            # EventfulTBKVBlock (src/tbkv/tbkv_utils.py), trading cache
+            # precision for a smaller cache.
+            "merge_iterations": merge_iterations,
+            "merge_ratio": merge_ratio,
             "verbose": verbose,
             "prev_attn_map": None,
         }
@@ -360,7 +387,7 @@ def load_videomae_checkpoint(model: VideoMAETBKV, path):
 
 def build_videomae_tbkv(
     weights_path=None, device="cuda", r_match=0.6, verbose=False,
-    model_size="vit_b",
+    model_size="vit_b", merge_iterations=0, merge_ratio=0.5,
 ):
     from pathlib import Path
 
@@ -383,6 +410,8 @@ def build_videomae_tbkv(
         num_frames=model_config["input_shape"][0],
         tubelet_size=model_config["tubelet_shape"][0],
         r_match=r_match,
+        merge_iterations=merge_iterations,
+        merge_ratio=merge_ratio,
         verbose=verbose,
     )
     load_videomae_checkpoint(model, weights_path)

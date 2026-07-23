@@ -69,6 +69,7 @@ VIVIT = {
     "tempomem": [   # (r, matching GFLOPs/clip, Top-1 %)
         (24, 222, 59.85),  # Top-5 79.83, caching 618  + matching 222 = 840
         (48, 435, 58.37),  # Top-5 78.62, caching 1016 + matching 435 = 1451
+        (96, 1711, 75.71),  # Top-5 = 92.35, caching 1814 + matching 1711 = total 3525
     ],
 }
 

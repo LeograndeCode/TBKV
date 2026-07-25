@@ -1,0 +1,11 @@
+Evaluation
+Quadro RTX 6000
+
+EventfulTBKV — ViViT / Kinetics-400 (replay_matching)
+  Videos evaluated : 19877
+  Caching frames   : 4 (discarded, uncounted)   frame_stride: 1
+  Top-1 Accuracy   : 58.45%
+  Top-5 Accuracy   : 78.58%
+  GFLOPs/clip      : matching 45 (caching warmup, excluded: 0)
+  (Eventful temporal_24 reference, whole-clip: 613 GFLOPs, Top-1 71%)
+

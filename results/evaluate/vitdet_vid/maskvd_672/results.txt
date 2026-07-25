@@ -1,0 +1,11 @@
+=== MaskVD Results ===
+n_items:         639
+period:          4
+conf:            0.5
+margin:          0
+mAP@50:          0.8205
+mAP:             0.5882
+Avg sparsity:    0.624  (fraction of tokens SKIPPED per frame)
+GFLOPs/frame:    80.925
+
+Counts: {'add_flops': 378692665.73389125, 'bias_flops': 55045123.80251046, 'linear_flops': 56366206773.77071, 'einsum_flops': 758661120.0, 'matmul_flops': 23366762496.0}

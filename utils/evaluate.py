@@ -33,6 +33,25 @@ def evaluate_vivit_metrics(device, model, data, config):
     data_loader = DataLoader(data, batch_size=1, num_workers=config.get("num_workers", 2))
     n_items        = config.get("n_items", len(data_loader))
     n_cache_frames = config.get("frame_split", 4)
+    # replay_matching: cache on a short warmup (a genuine, bounded clip) then
+    # REPLAY the whole video in matching mode, scored and counted -- so mAP
+    # covers every frame and the matching GFLOPs are the steady-state cost.
+    # Default False preserves the legacy protocol (cache on first frames,
+    # match on the REMAINDER), so existing results are unaffected.
+    #
+    # KNOWN LIMITATION (do not trust the caching-pass GFLOPs for ViViT):
+    # ViViT is a CLIP model. ViViTPreprocessing pads any input shorter than one
+    # temporal view back up to view_size and fans it out across
+    # temporal_views x spatial_views, and the per-view K/V cache forces the
+    # caching and matching passes to use the SAME number of views (same batch).
+    # Consequently the caching pass always processes a full multi-view forward
+    # (a constant ~dense cost, independent of n_cache_frames), so the
+    # "matching = reported metric" convention does NOT represent a net saving
+    # for the standalone ViViT path -- per video you pay caching + matching.
+    # The matching number itself is correct (matching-pass counts only); it is
+    # the amortization assumption that fails here. A real fix needs a
+    # spatial-only, preprocessing-bypassing warmup and is left as future work.
+    replay_matching = bool(config.get("replay_matching", False))
 
     all_cache_counts = []
     all_match_counts = []
@@ -48,7 +67,10 @@ def evaluate_vivit_metrics(device, model, data, config):
         # Clear cache between clips
         model.clear_cache()
         video_cache = video[:, :n_cache_frames].to(device)
-        video_match = video[:, n_cache_frames:].to(device)
+        # replay_matching scores the WHOLE clip; the legacy protocol scores
+        # only the frames after the caching window.
+        video_match = video.to(device) if replay_matching \
+            else video[:, n_cache_frames:].to(device)
         if video_match.shape[1] == 0:
             continue
         match_frames_total += int(video_match.shape[1])

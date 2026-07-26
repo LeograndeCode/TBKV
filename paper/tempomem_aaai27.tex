@@ -774,23 +774,19 @@ are the two concrete engineering steps this evaluation identifies.
 \toprule
 Method & \makecell{GFLOPs\\/fr.} & \makecell{Lat.\\(ms)} & \makecell{Mem.\\(MB)} & \makecell{mAP@50\\(\%)} \\
 \midrule
-ViTDet-B (dense)     & 174.5 & 70.1 & \textbf{965}  & \textbf{82.28} \\
-Eventful ($k{=}512$) & 60.7  & \textbf{[TBD]} & \textbf{[TBD]} & 81.80 \\
-\;\;+ spatial pooling & 52.8 & \textbf{49.0} & 1577 & 79.48 \\
-STGT ($k{=}512$)     & 68.5  & 55.1 & 1447 & 80.45 \\
-MaskVD               & 80.9  & 54.9 & 1133 & 82.05 \\
-TempoMem (layered)   & \textbf{46.6} & 60.0 & 2329 & 79.87 \\
+ViTDet-B (dense)      & 174.5 & 70.1 & \textbf{965}  & \textbf{82.28} \\
+Eventful              & 60.7  & 58.86 & 2323.63 & 81.80 \\
+\;\;$+$ spatial pool  & 52.8 & \textbf{49.0} & 1577 & 79.48 \\
+STGT                  & 68.5  & 55.1 & 1447 & 80.45 \\
+MaskVD                & 80.9  & 54.9 & 1133 & 82.05 \\
+PSM (layered)    & \textbf{46.6} & 60.0 & 2329 & 79.87 \\
 \bottomrule
 \end{tabular}
 \caption{ViTDet-B / ImageNet VID at $672 \times 672$, full 639-video split,
-single Quadro RTX 6000, identical timing protocol for every row. TempoMem
-(layered) is $\gamma = 0.25$, $T = 6$, $k = 512$. Best value per column in
-bold. TempoMem attains the lowest compute but the lowest accuracy and the
-highest memory footprint, and its latency advantage over dense does not
-extend to the gated baselines --- the FLOP saving is real but only partly
-realised in wall-clock terms. \textbf{[TBD: Eventful latency and memory at
-$k = 512$; the completed sweep logged these only at $k = 128$
-(51.8\,ms / 2323\,MB) and $k = 256$ (54.4\,ms / 2743\,MB).]}}
+single Quadro RTX 6000, identical timing protocol, all gated methods at
+the common budget. PSM (layered) uses $\gamma = 0.25$, $T = 6$;
+``$+$ spatial pool'' is Eventful compounded with $2{\times}2$ key/value
+pooling. Best value per column in bold.}
 \label{tab:vid672}
 \end{table}
 

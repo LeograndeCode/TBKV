@@ -8,11 +8,14 @@ frames run in matching mode, where TBKV drops cache-matched tokens from
 Eventful's recompute set. mAP and per-frame FLOPs are reported over the matching
 frames only, which is the honest steady-state cost once warm-up has amortised.
 """
+import copy
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+
+from omegaconf import OmegaConf
 
 import torch
 from torch.utils.data import DataLoader
@@ -200,11 +203,18 @@ def main():
     config = initialize_run(
         config_location=REPO_ROOT / "configs" / "evaluate" / "vitdet_vid"
     )
+    # A list-valued cache_reuse sweeps one full evaluation per value, each into
+    # its own "<output>-cache_reuse=<value>/" directory (same naming a CLI
+    # override would produce). A scalar keeps the single-run behavior.
+    cr_sweep = config.get("cache_reuse")
+    if not isinstance(cr_sweep, (list, tuple)):
+        cr_sweep = None
+
     # Route TBKV overrides into the block config.
     bc = config["model"].get("backbone_config", {}).get("block_config")
     if bc is not None:
         for key in ("cache_reuse", "merge_iterations", "merge_ratio", "substitute"):
-            if key in config:
+            if key in config and not (key == "cache_reuse" and cr_sweep):
                 bc[key] = config[key]
 
     detectron_cfg = Path(config["model"]["detectron2_config"])
@@ -223,7 +233,21 @@ def main():
             short_edge_length=640 * long_edge // 1024, max_size=long_edge
         ),
     )
-    run_evaluations(config, ViTDet, data, evaluate_eventful_tbkv_vitdet)
+    if cr_sweep is None:
+        run_evaluations(config, ViTDet, data, evaluate_eventful_tbkv_vitdet)
+        return
+
+    base_output = config["_output"].rstrip("/")
+    for cr in cr_sweep:
+        run_config = copy.deepcopy(config)
+        run_config["cache_reuse"] = cr
+        run_config["model"]["backbone_config"]["block_config"]["cache_reuse"] = cr
+        run_config["_output"] = f"{base_output}-cache_reuse={cr}/"
+        output_dir = Path(run_config["_output"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        OmegaConf.save(run_config, output_dir / "config.yml", resolve=True)
+        print(f"########## cache_reuse={cr}", flush=True)
+        run_evaluations(run_config, ViTDet, data, evaluate_eventful_tbkv_vitdet)
 
 
 if __name__ == "__main__":

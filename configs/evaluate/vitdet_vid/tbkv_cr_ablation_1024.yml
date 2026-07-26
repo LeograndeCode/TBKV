@@ -1,0 +1,26 @@
+# cache_reuse ablation at 1024 resolution: exact Eventful (temporal_1024 setup)
+# + TBKV recompute-set filter, k=512 only, on the standard 10% ablation
+# subsample (first 64 of 639 VID videos), replay-matching protocol.
+# merge_iterations is fixed at the 672-grid operating point (6); the top-level
+# cache_reuse list below is the sweep axis: one full evaluation per value, each
+# into results/evaluate/vitdet_vid/tbkv_cr_ablation_1024-cache_reuse=<v>/.
+# A scalar CLI override (cache_reuse=0.1) replaces the list for a single run.
+#   python scripts/evaluate/tbkv_eventful_vitdet_vid.py tbkv_cr_ablation_1024
+_defaults:
+  - "_size_1024.yml"
+  - "_half.yml"
+  - "_temporal.yml"
+token_top_k: [512]
+n_items: 64
+warmup: 4
+replay_matching: true
+cache_reuse: [0.25, 0.5, 0.75, 0.95]
+model:
+  backbone_config:
+    block_class: "EventfulTBKVBlock"
+    windowed_class: "EventfulTBKVTokenwiseBlock"
+    block_config:
+      cache_reuse: 0.25
+      merge_iterations: 6
+      merge_ratio: 0.5
+      caching: false

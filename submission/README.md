@@ -70,11 +70,13 @@ official ILSVRC2015 VID release. Evaluation uses the 639-video validation
 split. Place the packaged archive at `data/vid/data.tar`; the loader unpacks
 and prepares it on first use (`src/datasets/vid.py`).
 
-**Kinetics-400** (Kay et al. 2017) is downloaded automatically: on first use,
-`src/datasets/kinetics400.py` fetches the annotations and video shards of the
-official distribution and prepares them under `data/kinetics400/` — no manual
-step is required. Evaluation uses the 19,877-clip validation split. Expect
-roughly 123 GB.
+**Kinetics-400** (Kay et al. 2017). We use the official CVDF/DeepMind Kinetics
+distribution. Evaluation uses the 19,877-clip validation split; expect roughly
+123 GB. Place it under `data/kinetics400/`; the loader unpacks and decodes it on
+first use (`src/datasets/kinetics400.py`). That loader can also fetch the split
+from the official distribution itself when constructed with `download=True`,
+which is off by default — as with VID, the data is otherwise expected to be
+present already and no network access takes place.
 
 ### Preprocessing
 
@@ -237,9 +239,18 @@ python scripts/plots/make_vitdet672_figures.py     # or: bash scripts/run/06_fig
 Writes `fig_vid672_frontier.pdf` (Figure 1) and `fig_vid672_ablation.pdf`
 (Figure 2) to `paper/Figures/`. This needs **no GPU, no weights and no
 dataset** — it takes seconds and is the fastest way to confirm the archive
-runs. Note that the script carries its plotted values as constants rather than
-reading the result directories, so re-running an evaluation does not change the
-figure until those constants are updated.
+runs.
+
+> **Disclosure — the plotting script holds its values as constants.**
+> `make_vitdet672_figures.py` carries the plotted numbers inline (`METHODS` and
+> `ABL` near the top of the file) instead of reading `results/` at plot time, so
+> re-running an evaluation does not change a figure until those constants are
+> edited. The constants are **not** independent of the runs: every one of them
+> is cross-checked against the stored `results/` outputs by
+> `python scripts/reproduce/verify_paper_results.py`, which re-derives each
+> value from the corresponding `output.txt` and fails on any mismatch. Running
+> that script is therefore the way to confirm the figures against the data, and
+> the way to detect that a constant needs updating after a re-run.
 
 ### Table 1 — ImageNet VID, ViTDet-B, both resolutions
 
@@ -434,7 +445,7 @@ under an identical warm-up protocol.
 ├── requirements.txt           same pins, pip
 ├── data/
 │   ├── vid/                   place data.tar here (shipped empty)
-│   └── kinetics400/           filled automatically on first use (shipped empty)
+│   └── kinetics400/           place Kinetics-400 here (shipped empty)
 ├── weights/                   place the five checkpoints here (shipped empty)
 ├── src/
 │   ├── psm/                   the method

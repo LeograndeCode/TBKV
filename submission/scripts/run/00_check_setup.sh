@@ -79,7 +79,7 @@ fi
 if [ -n "$(ls -A data/kinetics400 2>/dev/null)" ]; then
     ok "data/kinetics400  ($(du -sh data/kinetics400 2>/dev/null | cut -f1))"
 else
-    warn "data/kinetics400 is empty -- the loader downloads it automatically on first use (~123 GB)"
+    bad "data/kinetics400  EMPTY  -- place the official Kinetics-400 validation split there (~123 GB); needed for every ViViT/K400 table"
 fi
 
 banner "4. Third-party baseline code (optional)"

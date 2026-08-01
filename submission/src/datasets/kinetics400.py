@@ -417,20 +417,16 @@ CLASS_IDS = {name: i for i, name in enumerate(CLASSES)}
 
 SPLITS = ["train", "test", "val"]
 
-# https://github.com/cvdfoundation/kinetics-dataset/blob/main/k400_downloader.sh
-LABEL_DOWNLOADS = {
-    split: f"https://s3.amazonaws.com/kinetics/400/annotations/{split}.csv"
-    for split in SPLITS
-}
-VIDEO_DOWNLOADS = {
-    split: f"https://s3.amazonaws.com/kinetics/400/{split}/k400_{split}_path.txt"
-    for split in SPLITS
-}
-
 
 class Kinetics400(Dataset):
     """
     A loader for the Kinetics-400 dataset.
+
+    Like the VID loader, this expects the dataset to be present already,
+    under `location` (e.g., data/kinetics400). See the project README for
+    the official public distribution it comes from. Passing download=True
+    additionally allows the loader to fetch it from that distribution; no
+    network access happens otherwise.
     """
 
     def __init__(
@@ -443,12 +439,16 @@ class Kinetics400(Dataset):
         shuffle=True,
         shuffle_seed=42,
         video_transform=None,
+        download=False,
     ):
         """
         Initializes the loader. On the first call, this constructor will
-        do some one-time setup (including downloading data).
+        do some one-time setup (unpacking and decoding). It expects the
+        dataset to be present under `location`; it downloads nothing
+        unless download=True.
 
-        :param location: Directory where the dataset should be stored
+        :param location: Directory containing the dataset (e.g.,
+        data/kinetics400). See the project README.
         :param split: Either "train", "test", or "val"
         :param decode_size: The short-edge length for decoded frames
         :param decode_fps: The fps for decoded frames
@@ -458,6 +458,10 @@ class Kinetics400(Dataset):
         :param shuffle_seed: The seed to use if shuffling
         :param video_transform: A callable to be applied to each video
         as it is loaded
+        :param download: If the dataset is not already present, fetch it
+        from the official public distribution (see the project README).
+        Off by default: the loader otherwise makes no network access and
+        raises if the data is missing.
         """
         assert split in SPLITS
         self.video_transform = video_transform
@@ -466,9 +470,18 @@ class Kinetics400(Dataset):
         if max_tars is not None:
             split = f"{split}_{max_tars}"
 
-        # Make sure the dataset has been set up.
+        # Make sure the dataset has been set up. As with the VID loader, the
+        # data is expected to be present already; fetching it is opt-in.
         Path(location, split).mkdir(parents=True, exist_ok=True)
         if not self.is_downloaded(location, split):
+            if not download:
+                raise FileNotFoundError(
+                    f"Kinetics-400 not found under {Path(location, split)}. "
+                    "Obtain the validation split from the official public "
+                    "distribution named in the project README (section 2) and "
+                    "place it there, or construct this loader with "
+                    "download=True to fetch it from that distribution."
+                )
             self.clean_downloaded(location, split)
             self.download(location, base_split, split, max_tars)
         if not self.is_unpacked(location, split):
@@ -609,7 +622,10 @@ class Kinetics400(Dataset):
     @staticmethod
     def download(location, base_split, split, max_tars):
         """
-        Performs one-time setup (downloading data).
+        Fetches the dataset from its official public distribution.
+
+        Only reached when the caller passes download=True (see __init__);
+        constructing the loader normally never calls this.
 
         :param location: The location of the dataset (see __init__)
         :param base_split: The main split ("train", "test", or "val")
@@ -618,15 +634,24 @@ class Kinetics400(Dataset):
         :param max_tars: Set a cap on the number of tar files to
         download for this split. Each tar contains about 1k videos.
         """
+        # Endpoints of the official Kinetics distribution, as used by the
+        # official downloader script:
+        # cvdfoundation/kinetics-dataset, k400_downloader.sh
+        label_download = f"https://s3.amazonaws.com/kinetics/400/annotations/{base_split}.csv"
+        video_download = (
+            f"https://s3.amazonaws.com/kinetics/400/{base_split}/"
+            f"k400_{base_split}_path.txt"
+        )
+
         base_path = Path(location, split)
         downloads_path = base_path / "downloads"
-        downloads_path.mkdir(exist_ok=True)
+        downloads_path.mkdir(parents=True, exist_ok=True)
 
         # Download the class labels.
-        download_file(LABEL_DOWNLOADS[base_split], base_path / "labels.csv")
+        download_file(label_download, base_path / "labels.csv")
 
         # Download the video archive files.
-        download_file(VIDEO_DOWNLOADS[base_split], downloads_path / "download_list.txt")
+        download_file(video_download, downloads_path / "download_list.txt")
         n = 0
         with open(downloads_path / "download_list.txt", "r") as download_list:
             for url in download_list:

@@ -1,0 +1,17 @@
+# EXACT Eventful (temporal_24 setup) + PSM recompute-set filter on top.
+# Mirrors temporal_24 (EventfulBlock spatial stack, fp16 matmul, token_top_k=24,
+# fine-tuned weights) and only swaps the block class for the PSM subclass.
+_defaults:
+  - "_base.yml"
+  - "_temporal.yml"
+token_top_k: [24]
+weights: "weights/vivit_b_kinetics400_final_24.pth"
+model:
+  spatial_config:
+    block_class: "EventfulPSMBlock"
+    block_config:
+      matmul_2_cast: "float16"
+      cache_reuse: 0.5      # fraction of Eventful's proposed tokens dropped when cache-matched
+      merge_iterations: 4
+      merge_ratio: 0.5
+      caching: true

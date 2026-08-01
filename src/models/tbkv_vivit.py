@@ -139,8 +139,20 @@ class TBKVFactorizedViViT(ExtendedModule):
         x = self.preprocessing(x)
         if self.batch_views:
             x = torch.stack(x, dim=1).flatten(end_dim=1)
+            # Bounded caching warmup: when _cache_frame_limit is set (only during
+            # the caching pass, see the eval harness), each view is truncated to
+            # its first K real frames before the per-frame spatial loop. Without
+            # this, ViViTPreprocessing pads a short caching slice back up to a
+            # full view and the "warmup" costs a full dense multi-view forward.
+            # Default (attribute absent / None) leaves every other path unchanged.
+            lim = getattr(self, "_cache_frame_limit", None)
+            if lim is not None:
+                x = x[:, :lim]
             x = self._forward_view(x)
         else:
+            lim = getattr(self, "_cache_frame_limit", None)
+            if lim is not None:
+                x = [v[:, :lim] for v in x]
             x = [self._forward_view(view) for view in x]
             x = torch.stack(x, dim=1).flatten(end_dim=1)
         return x

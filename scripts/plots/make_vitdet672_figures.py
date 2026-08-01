@@ -2,7 +2,7 @@
 """
 Generate the two ViTDet-B / ImageNet VID (672x672) figures for the paper:
 
-  fig_vid672_frontier.pdf  -- accuracy vs compute, layered TempoMem vs SOTA
+  fig_vid672_frontier.pdf  -- accuracy vs compute, layered PSM vs SOTA
   fig_vid672_ablation.pdf  -- cost-saving / mAP-change ablation, shared zero line
 
 All numbers are measured on the full 639-video validation split unless noted.
@@ -11,7 +11,7 @@ Sources:
   Eventful (k=512)    results/evaluate/vitdet_vid/temporal_672/
   STGT (k=512)        results/evaluate/vitdet_vid/stgt_672-token_top_k=[512]/
   MaskVD              /dev/shm/compare/maskvd_672/results.txt
-  TempoMem (layered)  .../tbkv_eventful_filter_672-token_top_k=[512]-
+  PSM (layered)       .../tbkv_eventful_filter_672-token_top_k=[512]-
                       cache_reuse=0.25-merge_iterations=6-warmup=4-
                       replay_matching=true-measure_latency=true/
   ablation grid       .../...-n_items=64-replay_matching=true  (10% split)
@@ -39,6 +39,8 @@ plt.rcParams.update({
     "axes.edgecolor": INK2, "text.color": INK, "axes.labelcolor": INK,
     "xtick.color": INK2, "ytick.color": INK2,
     "figure.dpi": 200, "savefig.bbox": "tight", "savefig.pad_inches": 0.02,
+    "pdf.fonttype": 42,   # embed TrueType, no Type 3 (AAAI requirement)
+    "ps.fonttype": 42,
 })
 
 # ── Figure 1: accuracy vs compute, one point per method ──────────────────────
@@ -51,7 +53,7 @@ METHODS = [
     ((52.8,  79.48), ORANGE, "^", False, "Eventful\n(spatio-temporal)",  6, -28, "center"),
     ((68.5,  80.45), AQUA,   "s", True,  "STGT",                11,  -3, "left"),
     ((80.9,  82.05), VIOLET, "D", True,  "MaskVD",              10,   0, "left"),
-    ((46.6,  79.87), BLUE,   "o", True,  "TempoMem\n(layered)", -6,  8, "right"),
+    ((46.6,  79.87), BLUE,   "o", True,  "PSM\n(layered)", -6,  8, "right"),
 ]
 
 fig, ax = plt.subplots(figsize=(3.4, 2.7))
@@ -67,8 +69,8 @@ for (x, y), c, m, filled, lab, dx, dy, ha in METHODS:
 
 ax.set_xlabel("GFLOPs / frame")
 ax.set_ylabel("mAP@50 (%)")
-ax.set_xlim(20, 195)
-ax.set_ylim(77.5, 83.4)
+ax.set_xlim(0, 215)
+ax.set_ylim(76.0, 84.0)
 fig.savefig(OUT / "fig_vid672_frontier.pdf")
 fig.savefig(OUT / "fig_vid672_frontier.png")
 print("wrote", OUT / "fig_vid672_frontier.pdf")

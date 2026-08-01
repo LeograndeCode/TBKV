@@ -1,0 +1,18 @@
+# Exact Eventful (temporal_1024 setup) + PSM recompute-set filter on top.
+# Same backbone/weights/token schedule as temporal_1024; only the block classes
+# change to the PSM subclasses, which subtract cache-matched tokens from
+# Eventful's recompute set during the matching (post-warm-up) frames.
+_defaults:
+  - "_size_1024.yml"
+  - "_half.yml"
+  - "_temporal.yml"
+token_top_k: [256, 512, 768, 1024, 1536, 2048]
+model:
+  backbone_config:
+    block_class: "EventfulPSMBlock"
+    windowed_class: "EventfulPSMTokenwiseBlock"
+    block_config:
+      cache_reuse: 0.5
+      merge_iterations: 4
+      merge_ratio: 0.5
+      caching: false

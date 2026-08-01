@@ -1,0 +1,10 @@
+Evaluation
+Quadro RTX 6000
+
+EventfulPSM — ViViT / Kinetics-400
+  Videos evaluated : 1988
+  Caching frames   : 4   frame_stride: 1
+  Top-1 Accuracy   : 58.65%
+  Top-5 Accuracy   : 78.42%
+  GFLOPs/clip      : caching 618 + matching 116 = TOTAL 734
+

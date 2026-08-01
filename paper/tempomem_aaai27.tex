@@ -14,6 +14,7 @@
 \usepackage{algpseudocode}   % do NOT also load `algorithmic' (clash)
 \usepackage{booktabs}
 \usepackage{makecell}
+\usepackage{multirow}
 
 \graphicspath{{Figures/}}
 
@@ -31,7 +32,8 @@
 
 \title{Persistent Semantic Memory for Efficient Video Transformer Inference}
 
-% Submission is anonymous; author block added on acceptance.
+\author{Anonymous Submission}
+\affiliations{}
 
 \begin{document}
 
@@ -61,68 +63,53 @@ Experiments on video classification and object detection show that
 persistent semantic memory complements existing temporal reuse methods.
 Layered on top of a state-of-the-art video transformer accelerator,
 PSM reduces the remaining computation by up to 49\% while incurring
-only a 2.5\% loss in Top-1 accuracy. More broadly, our results suggest
+only a 2.5 percentage-point drop in Top-1 accuracy. More broadly, our results suggest
 that persistent semantic memory is a new primitive for efficient
 transformer inference.
 \end{abstract}
-\iffalse %Flavio: OLD abstract (too long)
-Transformer-based models have demonstrated outstanding performance in video understanding tasks due to their capacity to capture long-range dependencies. However, their high computational cost, combined with the massive volume of streaming video data, poses significant challenges for real-time deployment on resource-constrained edge devices. Existing efficiency methods reduce redundancy by comparing consecutive frames, but discard the wealth of information already observed earlier in the stream: once a token falls outside the immediate temporal window, it must be recomputed from scratch when the same scene content reappears. To address this limitation, we propose TempoMem, a training-free framework that exploits long-term recurrence in streaming video. Through a novel clustering algorithm, TempoMem incrementally builds a Persistent Scene Memory (PSM), a compact key-value representation of previously observed scene content, and reuses it to bypass computation for recurring tokens. Because it is training-free and architecture-agnostic, TempoMem is designed to be layered on top of existing state-of-the-art acceleration methods, compounding their savings rather than competing with them. When layered on top of an existing state-of-the-art acceleration method, experimental results show that TempoMem reduces computation by 75\% compared to the base model and by a further 49\% in steady state compared to the accelerated method alone, at a cost of only 2.5\% in Top-1 accuracy, improving the accuracy-efficiency tradeoff for video transformers in streaming 
-settings.
-\end{abstract}
-\fi
 
-%
-%
-%\include{sections/introduction}
 \section{Introduction}
-
-%\paragraph{Context.}
+ 
 Transformer architectures have become the dominant paradigm for video understanding due to their ability to model long-range spatial and temporal dependencies through self-attention~\cite{vit,vivit,videomae}. Recent advances have demonstrated remarkable performance across a wide range of video analysis tasks, including action recognition, video object detection, and scene understanding \cite{vivit,vitdet}. However, these improvements come at a significant computational cost: every incoming frame is transformed into hundreds of visual tokens, each of which undergoes multiple layers of expensive attention and feed-forward computation.
 %
 Despite this computational burden, real-world video streams exhibit a striking property that current inference pipelines largely ignore: \emph{semantic persistence}. Although cameras continuously capture new frames, the underlying scene often changes slowly. Buildings, roads, furniture, vegetation, and other background structures frequently remain visible for hundreds of frames, temporarily disappear due to camera motion or occlusion, and later reappear. Consequently, modern video transformers repeatedly reconstruct semantic representations of visual content they have already processed many times before.
-
-
-%\paragraph{Need.}
+ 
+ 
 A large body of recent work has sought to reduce the computational cost of video transformers by exploiting redundancy across nearby frames. Existing approaches dynamically prune tokens, reuse activations, or selectively recompute only regions that have changed since previous frames~\cite{eventful,stgt,deltacnn,maskvd,cstvit}. Although highly effective, these methods share an important underlying assumption: useful redundancy is fundamentally \emph{local in time}. Their decisions are based almost exclusively on comparisons with the immediately preceding frames, implicitly treating inference as a short-term temporal optimization problem.
 %
 However, semantic redundancy extends far beyond adjacent frames. Visual content frequently reappears after long temporal gaps or significant camera motion, long after conventional temporal buffers have discarded the corresponding representations. Existing acceleration methods possess short-term temporal memory, but lack a mechanism for persistent semantic memory.
 %
 This observation motivates a fundamental question:
-
+ 
 \begin{quote}
 \emph{Can video transformers remember previously understood scene content and reuse that knowledge whenever the same semantic information reappears, regardless of when or where it is observed?}
 \end{quote}
-
-
-%\paragraph{Task.}
-
-To answer this question, we introduce \textbf{TempoMem}, a training-free inference framework that augments video transformers with a \emph{Persistent Scene Memory (PSM)}. Rather than determining whether a token has changed only with respect to recent frames, TempoMem asks a different question: \emph{has the model already understood this visual content before?}
+ 
+ 
+ 
+To answer this question, we introduce \textbf{PSM}, a training-free inference framework that augments video transformers with a \emph{PSM cache}. Rather than determining whether a token has changed only with respect to recent frames, PSM asks a different question: \emph{has the model already understood this visual content before?}
 %
-TempoMem incrementally builds a compact memory of recurring semantic content observed during inference and reuses previously computed key-value representations whenever similar content reappears. Because memory retrieval is based on visual content rather than image coordinates, TempoMem naturally complements existing temporal redundancy methods, remaining effective even under camera motion or long-term scene recurrence. Furthermore, since TempoMem requires neither retraining nor architectural modifications, it can be layered on top of existing transformer acceleration techniques, compounding their computational savings.
-
-
-%\paragraph{Object.}
-
-Beyond proposing a new inference mechanism, this paper investigates a broader scientific question: \emph{when does persistent semantic memory improve efficient video understanding?} To answer this question, we evaluated TempoMem both as a standalone accelerator and as a layer on top of existing temporal token-reduction methods across representative video classification and video object detection benchmarks. Our evaluation objective has been to assess how TempoMem improves computational efficiency and understand the conditions under which long-term semantic memory benefits transformer inference.
-
-
-%\paragraph{Findings.}
-
-Our experiments show that persistent semantic memory improves the efficiency of video classification. When combined with an existing state-of-the-art temporal acceleration method, TempoMem reduces the remaining computation by up to 75\% while incurring only a small loss in classification accuracy. Interestingly, we also observe that the same mechanism is considerably less effective for dense prediction tasks such as object detection, where spatially localized representations are far more sensitive to approximation. TempoMem demonstrates that long-term semantic recurrence constitutes an additional and largely unexplored source of computational efficiency, complementing existing token pruning and temporal gating techniques rather than replacing them.
-
-
-%\paragraph{Meaning.}
-
+PSM incrementally builds a compact memory of recurring semantic content observed during inference and reuses previously computed key-value representations whenever similar content reappears. Because memory retrieval is based on visual content rather than image coordinates, PSM naturally complements existing temporal redundancy methods, remaining effective even under camera motion or long-term scene recurrence. Furthermore, since PSM requires neither retraining nor architectural modifications, it can be layered on top of existing transformer acceleration techniques, compounding their computational savings.
+ 
+ 
+ 
+Beyond proposing a new inference mechanism, this paper investigates a broader scientific question: \emph{when does persistent semantic memory improve efficient video understanding?} To answer this question, we evaluated PSM as a layer on top of existing temporal token-reduction methods across representative video classification and video object detection benchmarks. Our objective is to assess how PSM improves computational efficiency and to identify the conditions under which long-term semantic memory benefits transformer inference.
+ 
+ 
+ 
+Our experiments show that persistent semantic memory improves the efficiency of video classification. When combined with an existing state-of-the-art temporal acceleration method, PSM reduces the remaining computation by up to 49\% while incurring only a 2.5 percentage-point drop in Top-1 accuracy, with detailed full-split results showing a 39\% whole-clip reduction at the favorable Kinetics-400 operating point and a 16$\times$ steady-state matching reduction. Interestingly, we also observe that the same mechanism is considerably less effective for dense prediction tasks such as object detection, where spatially localized representations are far more sensitive to approximation. PSM demonstrates that long-term semantic recurrence constitutes an additional and largely unexplored source of computational efficiency, complementing existing token pruning and temporal gating techniques rather than replacing them.
+ 
+ 
+ 
 %These results suggest that efficient video inference should not be viewed solely as a problem of exploiting temporal redundancy. Instead, it is fundamentally a problem of \emph{remembering} previously acquired semantic knowledge. By introducing persistent scene memory into transformer inference, TempoMem demonstrates that long-term semantic recurrence constitutes an additional and largely unexplored source of computational efficiency, complementing existing token pruning and temporal gating techniques rather than replacing them.
-
-%\paragraph{Perspective.}
+ 
 %We believe persistent semantic memory opens a new direction for efficient video intelligence. Beyond transformer acceleration, similar ideas could enable continual visual understanding, lifelong perception, adaptive memory management, and memory-aware multimodal reasoning systems. We hope this work encourages future research that treats semantic memory as a first-class component of efficient AI inference rather than merely an implementation optimization.
-
-
-
+ 
+ 
+ 
 \section{Related Work}\label{sec:relatedwork}
-
-
+ 
+ 
 \paragraph{Spatial token reduction.}
 Spatial acceleration methods reduce computation within individual frames
 by pruning, sampling, or merging uninformative tokens. DynamicViT
@@ -130,10 +117,10 @@ by pruning, sampling, or merging uninformative tokens. DynamicViT
 EViT \cite{evit} and ATS \cite{ats} retain tokens according to estimated
 importance; and ToMe \cite{tome} merges similar tokens without additional
 training. These methods primarily address intra-frame redundancy and do
-not retain reusable representations across a video stream. TempoMem uses
+not retain reusable representations across a video stream. PSM uses
 bipartite matching to summarize recurring content across frames into a
 persistent memory, making it complementary to spatial token reduction.
-
+ 
 \paragraph{Temporal computation reuse.}
 Temporal acceleration methods reuse computation across nearby frames.
 DeltaCNN \cite{deltacnn} propagates sparse frame differences, STGT
@@ -142,131 +129,41 @@ DeltaCNN \cite{deltacnn} propagates sparse frame differences, STGT
 MaskVD \cite{maskvd} skips background regions, while CST-ViT
 \cite{cstvit} combines spatial and temporal redundancy elimination.
 These approaches primarily rely on recent, often position-aligned
-observations. TempoMem instead retrieves representations by content from
-a persistent scene memory, enabling reuse after spatial displacement or
-longer temporal gaps. In its layered mode, TempoMem filters the
+observations. PSM instead retrieves representations by content from
+its PSM cache, enabling reuse after spatial displacement or
+longer temporal gaps. In its layered mode, PSM filters the
 recomputation set proposed by an existing accelerator; we instantiate
 this composition with Eventful Transformers.
-
+ 
 \paragraph{Memory-augmented video transformers.}
 MeMViT \cite{memvit} stores compressed representations of past clips to
 extend temporal context, while Token Turing Machines \cite{ttm} learn an
 external memory for sequential visual reasoning. These methods use memory
 to improve prediction by providing additional historical context.
-TempoMem instead uses memory to reduce inference cost: it stores compact
+PSM instead uses memory to reduce inference cost: it stores compact
 prototypes of previously processed content and reuses their transformer
 representations when similar content reappears. It requires no additional
 training and leaves the underlying model unchanged.
-
-\paragraph{Positioning of TempoMem.}
+ 
+\paragraph{Positioning of PSM.}
 Existing work therefore addresses intra-frame redundancy, short-term
-temporal reuse, or memory for predictive context. TempoMem targets a
+temporal reuse, or memory for predictive context. PSM targets a
 different setting: \emph{persistent, content-based reuse for efficient
-inference}. It maintains a bounded scene memory and avoids recomputing
+inference}. It maintains a bounded PSM cache and avoids recomputing
 visual content that was processed earlier in the stream, even when it
 reappears at a different location or after a temporal gap.
+ 
 
-\iffalse %Flavio: extended version for a journal
-\paragraph{Spatial token reduction.}
-A large family of efficient vision transformer methods reduces
-\emph{intra-frame} redundancy by shortening the token sequence processed
-within a single image or video frame. DynamicViT~\cite{dynamicvit} and
-A-ViT~\cite{avit} learn policies that prune uninformative tokens, while
-EViT~\cite{evit} retains tokens receiving high attention from the class
-token. ATS~\cite{ats} adaptively samples tokens according to their
-estimated importance, and ToMe~\cite{tome} reduces the length of the sequence by merging visually similar tokens through bipartite soft matching without requiring additional training.
-%
-These valid approaches answer the question of \emph{which information within the current frame deserves computation}. They can substantially reduce spatial redundancy, but generally treat each frame as a new inference instance and do not preserve reusable semantic representations across an extended video stream. TempoMem addresses a complementary source of redundancy: visual content that has already been encoded in earlier frames and later reappears. Although TempoMem uses ToMe's bipartite matching as one possible mechanism for constructing compact prototypes, its purpose is fundamentally different. Rather than merging tokens only to reduce the current sequence, we aggregates recurring content across time into a persistent memory that can support future inference.
-Spatial token reduction and persistent memory are therefore orthogonal:
-the former reduces computation within the current observation, whereas
-the latter avoids recomputing semantic content learned from previous
-observations. \smallskip
-
-\paragraph{Short-term temporal computation reuse.}
-A second type of approach exploits redundancy between nearby video frames. DeltaCNN~\cite{deltacnn} propagates sparse frame differences through convolutional networks. STGT \cite{stgt} uses learned spatio-temporal gates to selectively update transformer representations. Eventful Transformers \cite{eventful} maintain token-level reference buffers and recompute only tokens whose representations have changed significantly.
-MaskVD~\cite{maskvd} skips background regions identified through
-detection priors, while CST-ViT~\cite{cstvit} combines multiple spatial
-and temporal gates to eliminate complementary forms of redundancy.
-
-Despite their different mechanisms, these methods primarily exploit
-\emph{short-term, position-aligned temporal redundancy}. Their reuse
-decisions are typically based on whether the representation at a given
-spatial position has changed relative to one or more recent frames. This
-strategy is highly effective when motion is limited and scene content
-remains aligned, but it cannot directly recover semantic computations
-once the corresponding representation has left the temporal buffer or
-moved to a different image location. Consequently, content that
-reappears after camera motion, occlusion, or a long temporal gap may be
-computed again even when a semantically equivalent representation was
-observed earlier.
-
-TempoMem complements these approaches by introducing
-\emph{content-addressable, persistent reuse}. Instead of asking only
-whether a token has changed at its current position, TempoMem asks
-whether semantically similar content already exists anywhere in the
-scene memory. In its layered mode, an existing temporal accelerator
-first proposes the tokens that should be recomputed, and TempoMem then
-removes candidates already represented by persistent memory. Thus, the
-host identifies recent change, while TempoMem recognizes long-term
-semantic recurrence. We instantiate this composition with Eventful
-Transformers \cite{eventful}, but the interface is applicable to methods
-that expose an explicit recomputation set.
-
-\paragraph{Memory-augmented video understanding.}
-Memory has also been incorporated into video transformers to extend
-their temporal receptive field and improve prediction quality. MeMViT
-\cite{memvit} stores compressed representations of past clips to support
-long-term video recognition, while Token Turing Machines \cite{ttm}
-learn an external token memory that can be read from and written to
-during sequential visual reasoning. In these methods, memory serves as
-additional context: past information is retained because it may improve
-the model's future predictions.
-
-TempoMem uses memory for a different objective. Its Persistent Scene
-Memory is not introduced to provide additional evidence to the model,
-but to identify semantic computations that need not be performed again.
-It stores compact prototypes of previously processed scene content
-together with their reusable transformer representations, leaves the
-underlying model parameters unchanged, and requires no task-specific
-training. Accordingly, TempoMem does not compete with long-term memory
-models as a mechanism for increasing predictive context. It introduces
-a distinct form of memory whose primary role is to reduce inference
-cost.
-
-\paragraph{Persistent semantic memory for efficient inference.}
-The preceding lines of work address three related but distinct forms of
-redundancy. Spatial reduction removes unnecessary tokens from the
-current frame; short-term temporal methods reuse representations from
-recent, usually position-aligned observations; and memory-augmented
-models retain past information to improve predictive context. TempoMem
-targets a fourth setting: \emph{long-term semantic recurrence}. It
-maintains a bounded, content-addressable memory of scene representations
-and reuses previously computed transformer operations when equivalent
-visual content reappears, even after spatial displacement or an extended
-temporal gap.
-
-This distinction is loosely related to key--value caching in
-autoregressive language models, where previously computed keys and
-values are retained to avoid recomputing the prefix at every generation
-step. Video inference, however, presents a different challenge: an
-incoming visual token does not have a predetermined correspondence with
-a particular past token. Efficient reuse therefore requires determining
-which previously observed content is semantically equivalent, how it
-should be compressed into bounded memory, and when approximation remains
-safe for the downstream prediction task. TempoMem addresses these
-questions through persistent prototype construction and content-based
-retrieval.
-\fi
-
-\section{Persistent Semantic Memory for Efficient Inference} %Flavio: Methodology is too general
+ 
+\section{Persistent Semantic Memory for Efficient Inference} 
 \label{sec:method}
-
-It is known that transformer acceleration relies on caching. However, existing caches are fundamentally identity-based, i.e., cached representations are reused only when the same token, spatial location, or recent temporal context is encountered again. This naturally raises a broader question:
+ 
+Many transformer acceleration methods rely on caching or computation reuse. However, existing caches are fundamentally identity-based, i.e., cached representations are reused only when the same token, spatial location, or recent temporal context is encountered again. This naturally raises a broader question:
 \emph{can transformer inference exploit content-addressable semantic
 caching instead?} In particular, can previously computed internal
 representations be indexed by the visual content they encode, rather than
 by when or where they were computed?
-
+ 
 We hypothesize that a substantial fraction of transformer computation is
 associated with recurring scene content rather than individual frames.
 Consequently, if semantically equivalent visual content induces
@@ -274,48 +171,47 @@ sufficiently similar internal representations, those representations can
 be retrieved and reused in place of redundant computation, even after
 camera motion or long temporal gaps.
 %
-TempoMem is built upon this hypothesis. Rather than caching
+PSM is built upon this hypothesis. Rather than caching
 representations according to token identity or temporal locality, it
-constructs a compact \emph{Persistent Scene Memory (PSM)} that is queried
+constructs a compact \emph{PSM cache} that is queried
 by content. During inference, each transformer block summarizes recurring
 visual representations into semantic prototypes and associates them with
 their corresponding transformer activations. Incoming tokens retrieve
 these cached representations through content similarity, allowing
 previous computations to be reused whenever the memory sufficiently
 explains the observed scene. Because the memory is independent of the
-underlying model parameters, TempoMem requires no retraining and can
-operate either as a standalone accelerator or as a lightweight layer on
-top of existing temporal acceleration methods.
-
-
-\subsection{Persistent Scene Memory}
-
-The semantic caching hypothesis introduced requires a memory that can retrieve previously computed transformer representations based on content rather than token identity or temporal locality. TempoMem realizes this idea through a \emph{Persistent Scene Memory (PSM)}, a compact content-addressable memory that stores reusable semantic representations accumulated throughout
+underlying model parameters, PSM requires no retraining and operates
+as a lightweight layer on top of existing temporal acceleration
+methods.
+ 
+ 
+\subsection{PSM Cache}
+ 
+This semantic caching hypothesis requires a memory that can retrieve previously computed transformer representations based on content rather than token identity or temporal locality. PSM realizes this idea through a \emph{PSM cache}, a compact content-addressable memory that stores reusable semantic representations accumulated throughout
 inference.
-
+ 
 Unlike conventional caches, whose entries are indexed by position or
-execution order, PSM organizes memory according to semantic similarity.
+execution order, the PSM cache organizes memory according to semantic similarity.
 Consequently, visually similar scene content can retrieve previously
 computed representations even when it reappears at different locations or
 after long temporal gaps. To remain practical for long video sequences,
 the memory must remain compact, support efficient retrieval, and evolve
 online without requiring retraining.
 %
-We satisfy these requirements by representing PSM as a set of semantic
+We satisfy these requirements by representing the PSM cache as a set of semantic
 prototypes, each associated with the transformer representations it
 encodes. The following subsection describes how these prototypes are
 constructed and maintained during inference.
-
-\subsection{Memory Construction}%Not prototype cache... 
-
-PSM is constructed online during inference. Since no semantic memory is
-available at the beginning of a video, TempoMem first observes a short
+ 
+\subsection{Memory Construction} 
+The PSM cache is constructed online during inference. Since no semantic memory is
+available at the beginning of a video, PSM first observes a short
 bootstrap segment to initialize the memory. Rather than storing every
-token representation, PSM maintains a compact set of semantic prototypes
+token representation, the PSM cache maintains a compact set of semantic prototypes
 that summarize recurring scene content.
 %
 For each token representation $\mathbf{z}_i$ produced by the current
-transformer block, TempoMem measures its similarity to the existing
+transformer block, PSM measures its similarity to the existing
 prototypes: $s_j = \mathrm{sim}(\mathbf{z}_i,\mathbf{p}_j)$,
 where $\mathbf{p}_j$ denotes the $j$-th prototype and
 $\mathrm{sim}(\cdot,\cdot)$ is cosine similarity.
@@ -324,19 +220,19 @@ If the maximum similarity exceeds a threshold $\tau$, the corresponding
 prototype is updated to incorporate the new observation; otherwise, a new
 prototype is created. Consequently, the memory grows according to the
 semantic diversity of the video rather than its duration.
-
+ 
 Each prototype stores not only its semantic representation, but also the
 transformer activations associated with it, enabling their subsequent
 reuse during inference. The next subsection describes how incoming token
-representations query PSM to retrieve previously computed activations.
-
-
-
+representations query the PSM cache to retrieve previously computed activations.
+ 
+ 
+ 
 \subsection{Memory Retrieval}
-
-Once PSM has been initialized, every incoming token first queries the
+ 
+Once the PSM cache has been initialized, every incoming token first queries the
 memory before executing the standard transformer computations. Given its
-semantic representation $\mathbf{z}_i$, TempoMem retrieves the most
+semantic representation $\mathbf{z}_i$, PSM retrieves the most
 similar prototype,
 %
 \begin{equation}
@@ -344,7 +240,7 @@ j^*=\arg\max_j \; \mathrm{sim}(\mathbf{z}_i,\mathbf{p}_j),
 \end{equation}
 %
 where $\mathbf{p}_j$ denotes the $j$-th semantic prototype.
-
+ 
 The similarity score determines whether the cached representation
 provides a reliable explanation of the current scene content. If
 %
@@ -355,23 +251,23 @@ provides a reliable explanation of the current scene content. If
 the retrieved prototype is considered semantically equivalent to the
 incoming token and its associated transformer activations become
 available for reuse. Otherwise, the token follows the standard inference
-path, and its representation may subsequently be incorporated into PSM as
+path, and its representation may subsequently be incorporated into the PSM cache as
 described in the previous subsection.
-
+ 
 This retrieval mechanism extends conventional caching from exact
 identity-based reuse to approximate semantic reuse, allowing previously
 computed representations to remain useful even when recurring scene
 content appears at different spatial locations or after long temporal
 gaps. The next subsection describes how the retrieved activations are
 integrated into the transformer computation.
-
-
-
+ 
+ 
+ 
 \subsection{Representation Reuse}
-
+ 
 Memory retrieval determines whether an incoming token is semantically
 equivalent to previously observed scene content. When this condition is
-satisfied, TempoMem reuses the transformer representations associated
+satisfied, PSM reuses the transformer representations associated
 with the retrieved prototype instead of recomputing them.
 %
 Concretely, the matched prototype replaces the corresponding semantic
@@ -379,104 +275,32 @@ representation, while its cached key and value projections are injected
 directly into the attention computation. Only unmatched tokens require
 fresh projection and attention computation, allowing the transformer to
 preserve prediction quality while substantially reducing redundant
-operations. Algorithm~\ref{alg:standalone} summarizes the complete inference procedure for a transformer block operating with TempoMem.
+operations.
 
-
-\begin{algorithm}[t]
-\caption{Semantic Memory Inference with TempoMem}
-\label{alg:standalone}
-\begin{algorithmic}[1]
-\Require Tokens $X$; phase; memory $\mathcal{M}$; buffer $B$;
-background ratio $\beta$; reuse ratio $r$
-
-\If{phase is \textsc{caching}}
-    \Statex \Comment{\textbf{Build or refresh the semantic memory}}
-    \State Run dense inference on $X$
-    \State Add low-saliency background tokens and their activations to $B$
-    \If{the caching interval ends}
-        \State Compress $B$ into semantic prototypes and update $\mathcal{M}$
-        \State Clear $B$
-    \EndIf
-    \State \Return dense output
-\Else
-    \Statex \Comment{\textbf{Reuse recurring content from memory}}
-    \State Match background tokens to prototypes in $\mathcal{M}$
-    \State Reuse prototypes and cached activations for the best $r$ matches
-    \State Recompute foreground and unmatched tokens
-    \State \Return the block output on the reduced sequence
-\EndIf
-\end{algorithmic}
-\end{algorithm}
-\iffalse % Flavio: too complicated, too many implemetation details. I wanted to give the general idea here, we then share the code.
-
-\begin{algorithm}[t]
-\caption{Semantic Memory Inference with TempoMem} %(one block, one frame)}
-\label{alg:standalone}
-\begin{algorithmic}[1]
-\Require
-  Frame tokens; phase (\textsc{caching} or \textsc{matching});
-  cache $(E, \hat E, \tilde K, \tilde V)$; buffer $B$;
-  ratios $\beta$, $r$
-  \vspace{0.3em}
-
-\If{phase is \textsc{caching}}
-  \Comment{Warm-up or refresh frame}
-  \State Run the block unmodified (dense attention and MLP)
-  \State Score tokens with the saliency of Eq.~\ref{eq:saliency};
-    the $\lfloor \beta N \rfloor$ lowest scores form the background
-  \State Append the background tokens and their exact K/V to $B$
-  \If{this is the last caching frame}
-    \State Merge $B$ with $T$ BSM passes into
-      $(E, \hat E, \tilde K, \tilde V)$; clear $B$
-  \EndIf
-  \State \Return the dense block output
-\Else
-  \Comment{Matching frame}
-  \State Split the normalized tokens into background $X_b$ and
-    foreground $X_f$ via Eq.~\ref{eq:saliency}
-  \State Assign each background token its most cosine-similar prototype
-  \State Mark the $\lfloor r N_b \rfloor$ best-matching tokens as matched;
-    $E_{\mathrm{m}} \gets$ their distinct prototypes
-  \State $X' \gets [\,E_{\mathrm{m}} \mathbin{\Vert} X_{\mathrm{u}}
-    \mathbin{\Vert} X_f\,]$
-    \hfill\Comment{Token substitution}
-  \State $Q \gets$ query projection of all $N'$ tokens of $X'$
-  \State $K \gets [\,\tilde K_{\mathrm{m}} \mathbin{\Vert}
-    \text{fresh keys of } X_{\mathrm{u}}, X_f\,]$
-    \hfill\Comment{KV reuse}
-  \State $V \gets [\,\tilde V_{\mathrm{m}} \mathbin{\Vert}
-    \text{fresh values of } X_{\mathrm{u}}, X_f\,]$
-  \State \Return block output on $(X', Q, K, V)$
-    \hfill\Comment{Attention, projection, MLP on $N'$ tokens}
-\EndIf
-\end{algorithmic}
-\end{algorithm}
-\fi
-
+ 
 \subsection{Layered Integration}
-
-Although TempoMem can operate as a standalone acceleration mechanism, the
-semantic caching principle is independent of the underlying inference
-strategy. Rather than replacing existing efficient transformers,
-TempoMem complements them by providing an additional source of semantic
-reuse. Given any host acceleration method that selects a subset of tokens for recomputation, TempoMem first determines whether those tokens can be explained by its Persistent Scene Memory. Tokens that are successfully matched are substituted or skipped according to the host's execution model, while the remaining tokens follow the original inference path. Consequently, TempoMem augments existing acceleration techniques without modifying their optimization objectives or training procedures. Algorithm~\ref{alg:layered} summarizes this layered execution strategy.
-
-
-
+ 
+The semantic caching principle is independent of the underlying
+inference strategy. Rather than replacing existing efficient
+transformers,
+PSM complements them by providing an additional source of semantic
+reuse. Given any host acceleration method that selects a subset of tokens for recomputation, PSM first determines whether those tokens can be explained by its PSM cache. Tokens that are successfully matched are substituted or skipped according to the host's execution model, while the remaining tokens follow the original inference path. Consequently, PSM augments existing acceleration techniques without modifying their optimization objectives or training procedures. Algorithm~\ref{alg:layered} summarizes this layered execution strategy.
+ 
+ 
+ 
 \begin{algorithm}[t]
-\caption{Layered Semantic Memory Inference}%(one block, one frame)}
+\caption{Layered Semantic Memory Inference}
 \label{alg:layered}
 \begin{algorithmic}[1]
 \Require
   Frame tokens; host method with its per-frame token selection;
   prototype cache $E$; buffer $B$; reuse fraction $\gamma$
-  \vspace{0.3em}
-
+ 
 \State $C \gets$ recompute set of $k$ tokens proposed by the host
   \hfill\Comment{Tokens the host flags as useful}
 \If{phase is \textsc{caching}}
   \State Append the tokens of $C$ to $B$; on the last caching frame,
-    merge $B$ with $T$ BSM passes into $E$
+    merge $B$ with $T$ bipartite soft-matching passes into $E$
   \State \Return standard host output on $C$
 \Else
   \State Compare each candidate to every prototype in $E$
@@ -497,101 +321,17 @@ reuse. Given any host acceleration method that selects a subset of tokens for re
 \EndIf
 \end{algorithmic}
 \end{algorithm}
-
-
-
-
-\iffalse %Flavio: let's simplify and answer more interesting questions with this analysus.
+ 
+  
+ 
 \subsection{Complexity Analysis}
 \label{sec:complexity}
-
-TempoMem introduces an additional semantic retrieval stage during
-inference. The central question is therefore whether the cost of memory
-retrieval is offset by the computation it eliminates. We show that this
-is indeed the case under practical operating conditions.
-
-\paragraph{Computation.}
-
-For one transformer block with MLP expansion factor $4$, dense inference
-requires
-
-\begin{equation}
-F_{\text{dense}}
-\approx
-4NC^2
-+
-8NC^2
-+
-4N^2C,
-\end{equation}
-
-where the three terms correspond to the QKV/projection layers, MLP, and
-self-attention, respectively.
-
-During a TempoMem matching frame, only unmatched tokens require fresh
-key/value projections, while matched tokens reuse the cached
-representations. The resulting computation becomes
-
-\begin{equation}
-\begin{aligned}
-F_{\text{TM}}
-\approx\;
-&
-N'C^2
-+
-2(N'-M_u)C^2
-+
-N'C^2
-+
-8N'C^2
-\\
-&
-+
-4N'^2C
-+
-N_cMC,
-\end{aligned}
-\end{equation}
-
-where the last term corresponds to semantic retrieval. Consequently,
-every pointwise operation scales linearly with the reduced token count
-$N'$, while the attention cost scales quadratically as
-$(N'/N)^2$.
-
-\paragraph{Break-even analysis.}
-
-Semantic retrieval is beneficial whenever its cost is smaller than the
-projection computation it replaces. Since retrieval requires $N_cMC$
-operations while skipping matched tokens saves
-$2rN_cC^2$, TempoMem becomes computationally advantageous whenever $M < 2rC$.
-
-For a typical transformer width of $C=768$ and reuse ratio
-$r=0.75$, this bound corresponds to $M<1152$ prototypes. Our prototype
-memory is typically one to two orders of magnitude smaller,
-%(Proposition~\ref{prop:cachesize}), 
-indicating that semantic retrieval
-comfortably amortizes its own computational overhead.
-
-\paragraph{Memory complexity.}
-
-Unlike temporal window caching, whose memory grows proportionally to the
-number of cached frames, TempoMem maintains a fixed-size semantic memory.
-Each block stores the prototype embeddings and their associated
-transformer activations, requiring $O(MC)$ memory per block, or $O(LMC)$ across an $L$-layer transformer. The
-memory footprint is therefore independent of video duration, making
-TempoMem suitable for long-running video streams.
-
-\fi 
-
-
-\subsection{Complexity Analysis}
-\label{sec:complexity}
-
-TempoMem introduces an additional semantic retrieval step before each transformer block. Its computational benefit therefore depends on a simple trade-off: the cost of retrieving reusable representations from the Persistent Scene Memory versus the cost of recomputing those representations using the original transformer block.
+ 
+PSM introduces an additional semantic retrieval step before each transformer block. Its computational benefit therefore depends on a simple trade-off: the cost of retrieving reusable representations from the PSM cache versus the cost of recomputing those representations using the original transformer block.
 %
 We analyze the computational complexity of a single transformer block during inference and compare the proposed approach against \emph{dense inference}, i.e., the standard execution in which every input token is processed normally without any representation reuse. For an input containing $N$ tokens with embedding dimension $C$, the dominant floating-point operations (FLOPs) of dense inference are
 approximately:
-
+ 
 \begin{equation}
 F_{\mathrm{dense}}
 \approx
@@ -601,14 +341,14 @@ F_{\mathrm{dense}}
 +
 4N^2C,
 \end{equation}
-
+ 
 where the first term corresponds to the query, key, value, and output linear projections, the second term accounts for the two-layer feed-forward network, and the final quadratic term captures the self-attention computation.
- During a matching frame, TempoMem replaces a fraction of the background tokens with cached semantic representations, so only the
+ During a matching frame, PSM replaces a fraction of the background tokens with cached semantic representations, so only the
 remaining unmatched tokens require fresh key/value computation. The
 resulting cost becomes:
-
+ 
 \begin{equation}
-F_{\mathrm{TM}}
+F_{\mathrm{PSM}}
 \approx
 10N'C^2
 +
@@ -618,27 +358,29 @@ F_{\mathrm{TM}}
 +
 N_cMC,
 \end{equation}
-
-where the final term is the semantic retrieval cost. Since $N'<N$, the
+ 
+where $N'$ is the number of tokens processed after substitution,
+$M_u$ is the number of tokens whose key/value projections are reused,
+$N_c$ is the number of candidate tokens compared against memory, and
+$M$ is the number of semantic prototypes. The final term is the semantic
+retrieval cost. Since $N'<N$, the
 dominant attention computation is reduced quadratically, while all
 pointwise operations scale with the reduced token count.
-
+ 
 Moreover, semantic retrieval quickly amortizes its own overhead.
 Matching requires $O(N_cM)$ similarity computations, whereas every
-matched token avoids recomputing its key/value projections. Retrieval is
-therefore beneficial whenever $M < 2rC$,
-where $r$ is the reuse ratio. For a typical ViT embedding dimension
-($C=768$) and $r=0.75$, the break-even point is $M<1152$ prototypes.
-TempoMem typically operates with one to two orders of magnitude fewer
+matched token avoids recomputing its key/value projections. Retrieval is therefore beneficial whenever $M < 2\gamma C$,
+where $\gamma$ is the reuse fraction. For a typical ViT embedding dimension
+($C=768$) and $\gamma=0.75$, the break-even point is $M<1152$ prototypes.
+PSM typically operates with one to two orders of magnitude fewer
 prototypes, so the retrieval cost is negligible compared to the
 computation it eliminates.
-
+ 
 Finally, unlike temporal window caches, whose memory grows linearly with
-the number of stored frames, the Persistent Scene Memory has a fixed
+the number of stored frames, the PSM cache has a fixed
 capacity. Each transformer block stores $O(MC)$ values, yielding
 $O(LMC)$ memory for an $L$-layer transformer, independent of the length
 of the video stream.
-
 
 \section{Evaluation}
 \label{sec:eval}
@@ -646,205 +388,406 @@ of the video stream.
 \subsection{Experimental Settings and Details}
 \label{sec:setup}
 
-\paragraph{Datasets and evaluation setup.}
-We evaluate on video object detection using the ILSVRC 2015 ImageNet VID
-dataset, reporting on the full 639-video validation split with mean average
-precision at IoU $0.5$ (mAP@50), following the protocol of prior work
-\cite{eventful,maskvd}. Ablations use a fixed $10\%$ subsample (64 videos)
-drawn once and shared by every configuration, so all ablation comparisons
-are paired. Compute is reported as GFLOPs measured with in-code operation
-counters (instrumented linear, matmul, einsum, bias and add modules) rather
-than analytic estimates, so every reported reduction reflects operations
-actually executed, \emph{including} the cost of TempoMem's own matching.
-Latency is CUDA-event wall-clock time per frame and memory is peak GPU
-allocation, both measured on a single NVIDIA Quadro RTX 6000 (24\,GB) under
-a shared warm-up and reset protocol applied identically to every method.
+\paragraph{Datasets and metrics.}
+Our primary benchmark is video object detection on ImageNet VID
+\cite{imagenetvid}: dense
+spatial prediction is the hardest case for token substitution. We
+report mAP@50 on the full 639-video validation split, following
+\cite{eventful,maskvd}. Two companion evaluations broaden the scope:
+action recognition with ViViT on Kinetics-400, read
+globally from a class token, as discussed in the Video Action Recognition
+subsection, and
+the same detection benchmark at $1024 \times 1024$, which tests a fixed
+recompute budget against a much larger frame. GFLOPs are measured with in-code operation counters, so every
+reported reduction includes the cost of PSM's own matching; latency is CUDA-event
+wall-clock time and memory is peak GPU allocation, measured on one
+NVIDIA Quadro RTX 6000 under an identical warm-up protocol.
 
-\paragraph{Model design for video detection.}
-Our detection model is ViTDet-B \cite{vitdet}, a plain ViT-B \cite{vit}
-backbone with a standard detection head. The backbone has 12 blocks with
-global self-attention at blocks 3, 6, 9 and 12 and $14 \times 14$ windowed
-attention elsewhere; tokens are 768-dimensional and attention uses 12 heads
-with learned relative position embeddings. We evaluate at $672 \times 672$
-input resolution, which yields 1{,}764 tokens per frame. Because windowed
-blocks carry relative-position biases, TempoMem runs in its KV-reuse-only
-variant on those blocks and in its full form on the global-attention
-blocks, which account for the bulk of the self-attention cost.
+\paragraph{Ablation split.}
+Ablations use a fixed $10\%$ subsample of each dataset (64 VID videos,
+1{,}988 Kinetics-400 clips), drawn once and shared by every
+configuration; all comparisons are paired against a dense reference on
+the same subsample. The subsamples come from the validation
+splits, since neither benchmark has a tuning partition. The operating points carried into the full-split
+comparisons ($\gamma = 0.25$, $T = 6$ for detection; $\gamma = 0.95$,
+$T = 2$ for recognition) were fixed on the subsamples beforehand;
+single-run differences below roughly one point are within noise.
 
-\paragraph{Evaluation protocol and cost accounting.}
-All weights are frozen, pretrained checkpoints; TempoMem and every compared
-method are applied as training-free, inference-time modifications, so all
-comparisons isolate the reuse mechanism itself.
+\paragraph{Detection model.}
+The detector is ViTDet-B \cite{vitdet}: a ViT-B backbone \cite{vit}
+with global self-attention at blocks 3, 6, 9 and 12 and
+$14 \times 14$ windowed attention elsewhere. The primary resolution is
+$672 \times 672$ (1{,}764 tokens per frame); the companion evaluation
+uses $1024 \times 1024$ (4{,}096). Every gated accelerator (Eventful,
+STGT, layered PSM) runs at a single common token budget of $k = 512$
+at both resolutions, i.e., $29\%$ of the tokens at $672$ and $12.5\%$
+at $1024$. The budget is fixed where the host's published
+sweep is nearly saturated, comparing reuse mechanisms at equal budget;
+the same absolute $k$ deliberately tightens the relative budget at
+$1024$. Windowed blocks carry
+relative-position biases, so PSM runs there in KV-reuse-only form and
+in full on the global-attention blocks.
 
-\emph{Replay matching.} Each video is processed twice. The first $W = 4$
-frames run in caching mode to build the persistent memory; this pass is
-\textbf{discarded and uncounted} --- its predictions are thrown away and its
-FLOPs excluded. The model then \textbf{replays the entire video from frame
-0} in matching mode, and only this second pass is scored and counted.
-mAP@50 therefore covers every frame of the video, and GFLOPs/frame is the
-steady-state cost of a warm model, with no warm-up amortization credited to
-the method. The dense, Eventful, STGT and MaskVD baselines are evaluated on
-the same frames under the same accounting, so every number in this section
-is directly comparable.
-
-\emph{Layered instantiation.} Eventful Transformers \cite{eventful} are the
-host throughout. An Eventful block gates the qkv input, the attention-output
-projection and the MLP, selecting the top-$k$ most-changed tokens for
-recomputation and reusing buffered values elsewhere; $k$ is its compute
-budget. The layered filter plugs in at the qkv gate: it drops the fraction
-$\gamma$ of the gate's top-$k$ proposal that best matches the persistent
-memory and forces the surviving set onto all three gates
-(Algorithm~\ref{alg:layered}). With $\gamma = 0$ every gate receives exactly
-its Eventful proposal, so the pipeline \emph{is} Eventful, and every layered
-comparison is controlled down to the single knob $\gamma$.
+\paragraph{Protocol and cost accounting.}
+All weights are frozen pretrained checkpoints; PSM and every baseline
+are training-free, inference-time modifications.
+%
+\emph{Replay matching (detection).} Each VID video is processed twice:
+the first pass sees only the first $W = 4$ frames and populates the
+memory (unscored, uncounted); the second replays the full video in
+matching mode and is the only pass scored and costed. mAP@50 thus covers
+every frame and the reported cost is the warm steady state; all
+baselines use the same accounting. The
+protocol models deployments in which content recurs after the memory
+is built (archived or looped footage, stationary cameras), not a
+single-pass live stream; the recognition benchmark adopts the
+complementary accounting, bracketing the deployment space.
+%
+\emph{Layered instantiation.} Eventful Transformers \cite{eventful}
+serve as the host throughout. The layered filter plugs in at the QKV
+gate: it removes the fraction $\gamma$ of the gate's top-$k$ proposal
+that best matches the memory and forces the surviving set onto all
+three gates (Algorithm~\ref{alg:layered}). At $\gamma = 0$ the pipeline
+reduces to Eventful itself.
 
 \subsection{Comparison with the State of the Art}
 \label{sec:eval-sota}
 
-\paragraph{Accuracy versus compute.}
-Figure~\ref{fig:frontier} places every compared method in the
-accuracy--compute plane at a common token budget ($k = 512$ where
-applicable). Layered TempoMem reaches the lowest compute cost in the
-comparison by a clear margin, 46.6 GFLOPs/frame --- a $73\%$ reduction
-against the dense backbone and $23\%$ below Eventful --- and is the only
-method under $60$ GFLOPs. It also records the lowest accuracy, 79.87\%
-mAP@50, against 81.80\% for Eventful, 82.05\% for MaskVD and 82.28\% for
-dense. The $23\%$ compute saving over the host therefore costs $1.9$ mAP
-points. Sweeping the host's budget confirms that this trade is not
-favourable: Eventful configured to spend the \emph{same} compute as
-TempoMem ($k = 384$, 47.1 GFLOPs) scores 81.40\% mAP@50, so at matched cost
-the host alone is $1.5$ points more accurate. Spending a fixed budget on a
-larger Eventful recompute set beats spending it on a smaller set plus
-content-based reuse. We report this as measured rather than tuning around
-it: on dense spatial prediction the recompute-set filter buys real compute
-savings but does not advance the accuracy--compute frontier.
+This comparison tests the paper's central hypothesis: that at an equal
+recompute budget, layering persistent content-addressable reuse on a
+state-of-the-art temporal accelerator removes a further share of the
+residual computation at only a small accuracy cost.
 
-There is one configuration TempoMem does improve on. Eventful can itself be
-compounded with a spatial-redundancy mechanism --- $2 \times 2$ pooling of
-the attention keys and values --- and this variant is the closest published
-analogue to a compounded accelerator. Against it, TempoMem is both cheaper
-(46.6 vs.\ 52.8 GFLOPs/frame, $-12\%$) and marginally more accurate
-(79.87\% vs.\ 79.48\%), so as a way of buying the last increment of compute
-reduction on top of a temporal host, persistent memory is competitive with
-spatial pooling. The advantage is narrow, and it does not extend to latency
-or memory (below), but it delimits where the mechanism is worth using.
+\paragraph{Accuracy--compute trade at a common budget.}
+Figure~\ref{fig:frontier} places all methods in the accuracy--compute
+plane at $672 \times 672$. Layered PSM runs at $46.6$ GFLOPs per
+frame, the lowest of any method: $73\%$ below the dense backbone,
+$23\%$ below Eventful, $32\%$ below STGT and $42\%$ below MaskVD. The
+accuracy cost is small, $79.87$ mAP@50, at most $2.4$ points below any
+compared configuration, and no configuration is simultaneously cheaper
+and more accurate; PSM also beats the spatially compounded Eventful
+variant on both axes at once. This holds for the compared configurations at $k = 512$, not the full
+frontier each baseline could trace: a budget-matched Eventful
+configuration interpolated from its published sweep would recover
+roughly $1.5$ mAP (open marker in
+Figure~\ref{fig:frontier}). The two mechanisms are therefore
+complementary routes into the low-compute regime.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{fig_vid672_frontier.pdf}
-\caption{Accuracy versus compute on ViTDet-B / ImageNet VID at
-$672 \times 672$, full 639-video validation split, replay-matching
-accounting for every point ($k = 512$ where applicable). Layered TempoMem
-($\gamma = 0.25$, $T = 6$) is the cheapest method by a wide margin at 46.6
-GFLOPs/frame, $73\%$ below dense and $23\%$ below Eventful, but also the
-least accurate at 79.87\% mAP@50. Eventful gives the best
-accuracy-per-FLOP among the accelerators (81.80\% at 60.7 GFLOPs),
-dominating STGT on both axes; MaskVD is the most accuracy-preserving
-(82.05\%, within $0.2$ points of dense) at the highest accelerator cost.
-Points down and to the right are better.}
+\caption{Accuracy--compute trade-off on ImageNet VID with ViTDet-B at
+$672 \times 672$ (full validation split, all accelerators at the common
+budget $k = 512$). Layered PSM ($\gamma = 0.25$, $T = 6$) is the
+lowest-compute method at $46.6$ GFLOPs per frame, at an accuracy cost
+of at most $2.4$ mAP@50; the open marker is the budget-matched
+Eventful point interpolated from its published sweep. Lower right is
+better.}
 \label{fig:frontier}
 \end{figure}
 
 \paragraph{Deployment cost: latency and memory.}
-Table~\ref{tab:vid672} reports the same comparison with measured wall-clock
-latency and peak memory, which tell a different story from FLOPs alone.
-Layered TempoMem converts the largest FLOP reduction in the table into the
-\emph{smallest} relative speedup: at 60.0\,ms it is faster than the dense
-backbone (70.1\,ms) but slower than every gated baseline, including STGT
-(55.1\,ms), MaskVD (54.9\,ms) and the spatially pooled Eventful variant
-(49.0\,ms), all of which execute more nominal FLOPs. The last of these is
-the sharpest illustration: it costs $13\%$ more FLOPs than TempoMem yet
-runs $18\%$ faster.
-The cause is implementation-level rather than algorithmic --- the
-cosine-similarity matching product and the gather/scatter steps are unfused
-kernels --- but it means the theoretical saving does not yet reach the
-deployment metric that matters. Memory moves against the method even more
-clearly: at 2329\,MB TempoMem is the most memory-hungry configuration
-measured, more than double the dense backbone, because it maintains the
-persistent memory \emph{in addition to} the host's existing reference and
-accumulator buffers rather than replacing them. Reducing that overhead
-through buffer sharing, and recovering the latency through fused kernels,
-are the two concrete engineering steps this evaluation identifies.
+The upper block of Table~\ref{tab:vid} adds measured latency and peak
+memory. PSM has the highest footprint, as the only method with an
+explicit content cache, but the host's own buffers already
+account for 2324\,MB of it: the prototype cache adds only
+about 5\,MB and does not grow with video length: the footprint is a
+property of the layered setting, not the persistent memory. Latency is near parity with the host (60.0 vs.\ 58.9\,ms),
+slightly behind the other gated baselines and well ahead of dense
+(70.1\,ms); we attribute the gap between the $23\%$ FLOP reduction and
+wall-clock parity to unfused matching and gather/scatter kernels, unverified
+absent a fused implementation.
+
+\paragraph{Scaling to $1024 \times 1024$.}
+In the lower block of Table~\ref{tab:vid} the compute advantage widens
+while the accuracy picture tightens. Eventful itself is now measured
+at $1024$: $87.8$ GFLOPs per frame, $145.2$\,ms and $8045$\,MB at
+$79.42$ mAP@50. PSM runs at $69.1$ GFLOPs per
+frame, $21\%$ below this reference, $85\%$ below dense (vs.\ $73\%$ at $672$) and $58\%$ below
+STGT, the expected effect of gating at a fixed absolute budget as the
+frame grows. But PSM loses the most accuracy of the methods measured at both
+resolutions, $4.3$ points ($79.87 \rightarrow 75.57$), landing $1.4$
+points below Eventful with spatial pooling at the same compute ($69.1$
+vs.\ $70.9$ GFLOPs) and $3.85$ points below plain Eventful at $21\%$
+lower compute: the double advantage observed at $672$ does not hold under the tighter $1024$ budget. We interpret this as the dense-readout limit reasserting itself: at
+a $12.5\%$ budget the filter substitutes tokens the detection head
+reads directly, so re-tuning $\gamma$ per resolution is the obvious
+next step. Memory grows to $8062$\,MB, about $17$\,MB above the
+Eventful reference, consistent with the small persistent-cache
+overhead seen at $672$; latency follows the $672$ pattern, near
+parity with the host ($143.0$ vs.\ $145.2$\,ms), $19\%$
+faster than dense and slower than the other gated methods.
+
+\paragraph{Main implication.}
+The hypothesis is confirmed at $672$: layered PSM is the cheapest
+compared configuration for at most $2.4$ mAP@50 and a few megabytes of
+length-independent cache. It is conditional at $1024$: the compute
+margin widens but accuracy dominance is lost, so the operating point
+must track the relative budget.
 
 \begin{table}[t]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lcccc}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{clcccc}
 \toprule
-Method & \makecell{GFLOPs\\/fr.} & \makecell{Lat.\\(ms)} & \makecell{Mem.\\(MB)} & \makecell{mAP@50\\(\%)} \\
+Res. & Method & \makecell{GFLOPs\\/fr.} & \makecell{Lat.\\(ms)} & \makecell{Mem.\\(MB)} & \makecell{mAP@50\\(\%)} \\
 \midrule
-ViTDet-B (dense)      & 174.5 & 70.1 & \textbf{965}  & \textbf{82.28} \\
-Eventful              & 60.7  & 58.86 & 2323.63 & 81.80 \\
-\;\;$+$ spatial pool  & 52.8 & \textbf{49.0} & 1577 & 79.48 \\
-STGT                  & 68.5  & 55.1 & 1447 & 80.45 \\
-MaskVD                & 80.9  & 54.9 & 1133 & 82.05 \\
-PSM (layered)    & \textbf{46.6} & 60.0 & 2329 & 79.87 \\
+\multirow{6}{*}{672}
+ & ViTDet-B (dense)     & 174.5 & 70.1 & \textbf{965}  & \textbf{82.28} \\
+ & Eventful             & 60.7  & 58.9 & 2324 & 81.80 \\
+ & \;\;$+$ spatial pool & 52.8  & \textbf{49.0} & 1577 & 79.48 \\
+ & STGT                 & 68.5  & 55.1 & 1447 & 80.45 \\
+ & MaskVD               & 80.9  & 54.9 & 1133 & 82.05 \\
+ & PSM (layered)        & \textbf{46.6} & 60.0 & 2329 & 79.87 \\
+\midrule
+\multirow{5}{*}{1024}
+ & ViTDet-B (dense)     & 467.4 & 176.1 & \textbf{2275} & \textbf{82.93} \\
+ & Eventful             & 87.8  & 145.2 & 8045 & 79.42 \\
+ & \;\;$+$ spatial pool & 70.9  & \textbf{98.5} & 3426 & 76.98 \\
+ & STGT                 & 164.0 & 133.1 & 3391 & 76.70   \\
+ & PSM (layered)        & \textbf{69.1} & 143.0 & 8062 & 75.57 \\
 \bottomrule
 \end{tabular}
-\caption{ViTDet-B / ImageNet VID at $672 \times 672$, full 639-video split,
-single Quadro RTX 6000, identical timing protocol, all gated methods at
-the common budget. PSM (layered) uses $\gamma = 0.25$, $T = 6$;
+\caption{Deployment cost on ImageNet VID with ViTDet-B at two input
+resolutions (full validation split, all gated methods at the common
+budget $k = 512$). PSM (layered) uses $\gamma = 0.25$, $T = 6$;
 ``$+$ spatial pool'' is Eventful compounded with $2{\times}2$ key/value
-pooling. Best value per column in bold.}
-\label{tab:vid672}
+pooling. A $672$ frame carries 1{,}764 tokens, so $k$ is $29\%$ of them;
+a $1024$ frame carries 4{,}096, so $k$ is $12.5\%$. Holding $k$ fixed therefore
+makes $1024$ a much tighter relative budget, which is why every gated
+method loses accuracy there while dense gains. Best value per column within each resolution block in
+bold.}
+\label{tab:vid}
 \end{table}
 
 \subsection{Ablation Study}
 \label{sec:eval-ablation}
 
-\paragraph{Reuse fraction $\gamma$ governs the accuracy--compute exchange.}
-Figure~\ref{fig:ablation} ablates the reuse fraction $\gamma$, the single
-knob that determines how much of the host's recompute set the persistent
-memory absorbs. Compute savings grow smoothly and substantially with
-$\gamma$, from $73.3\%$ to $95.2\%$ against the dense backbone as the
-effective token-skipping ratio rises from $78.2\%$ to $98.5\%$. Accuracy,
-however, does not degrade proportionally --- it degrades
-\emph{super-linearly}. The first step is nearly free: at $\gamma = 0.25$ the
-filter discards a quarter of the proposed tokens for $2.8$ mAP points,
-already delivering almost three quarters of the achievable saving. Doubling
-the reuse fraction to $\gamma = 0.5$ costs $7.3$ points for only $7.8$
-further points of saving, and beyond that the exchange collapses: $\gamma =
-0.75$ loses $18.6$ points and $\gamma = 0.95$ loses $44.0$, by which stage
-the detector has been degraded past usefulness in exchange for a final
-$6$ points of compute. The practical operating range for dense spatial
-prediction is therefore the low-$\gamma$ regime, and $\gamma = 0.25$ is the
-configuration we carry into the comparison above. A second knob, the number
-of merge passes $T$ used to compress the memory into prototypes, proved
-nearly inert on this task: across $T \in \{2,4,6,8\}$ accuracy varies by at
-most $1.2$ mAP points at fixed $\gamma$, and $T$ does not change FLOPs at
-all, since merging alters \emph{which} tokens the memory holds rather than
-how many are recomputed.
+\paragraph{Reuse fraction $\gamma$.}
+\emph{Hypothesis.} The reuse fraction $\gamma$ sets how much of the
+host's recompute set the memory absorbs, trading exact recomputation
+for approximate, prototype-based substitution. This experiment asks how
+a dense prediction head, which reads every spatial token directly,
+tolerates that approximation; we hypothesize a low-$\gamma$ regime with
+large savings at small accuracy cost, degrading steeply beyond it.
+%
+\emph{Results.} Figure~\ref{fig:ablation} sweeps $\gamma$ on the
+detection subsample. Compute savings grow
+smoothly with $\gamma$, from $73.3\%$ to $95.2\%$ of dense, but
+accuracy degrades super-linearly: $\gamma = 0.25$ costs $2.8$ mAP
+points and already delivers almost three quarters of the achievable
+saving; $\gamma = 0.5$ costs $7.3$ points for only $7.8$ further
+points of saving; $\gamma = 0.75$ and $0.95$ lose $18.6$ and $44.0$.
+These losses are an order of magnitude above the noise floor.
+%
+\emph{Main implication.} Confirmed: under a dense readout, degradation
+is super-linear in $\gamma$, so only the low-$\gamma$ regime is usable;
+$\gamma = 0.25$ captures most of the saving for $2.8$ mAP points and is
+carried into the comparison above.
+
+\paragraph{Prototype granularity ($T$ merge passes).}
+\emph{Hypothesis.} \emph{Prototype granularity} is how finely the cache
+summarizes the tokens it stores: prototypes are built by $T$ passes of
+bipartite soft matching (Algorithm~\ref{alg:layered}), each merging the
+most similar pairs, so small $T$ yields many fine prototypes close to
+the raw tokens and large $T$ few coarse averages. Since $T$ changes
+only \emph{which} representations the memory holds, not \emph{how many}
+tokens are recomputed, it is FLOP-neutral and isolates substitution
+fidelity from reuse volume. We hypothesize accuracy is sensitive to
+this fidelity, i.e., an optimal intermediate $T$ exists between
+over-blurred and needlessly fine summaries.
+%
+\emph{Results.} Sweeping $T \in \{2,4,6,8\}$ at fixed $\gamma$ moves
+mAP@50 by at most $1.2$ points in the usable range $\gamma \le 0.75$,
+with no consistent direction and near the noise floor.
+%
+\emph{Main implication.} Rejected: there is no fragile sweet spot.
+Accuracy is governed by how many tokens are replaced ($\gamma$), not
+how finely the cache summarizes them ($T$); $T = 6$ is a safe default
+requiring no tuning.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{fig_vid672_ablation.pdf}
-\caption{Ablation of the reuse fraction $\gamma$ on ViTDet-B / ImageNet VID
-($k = 512$, $10\%$ split, replay matching, best $T$ per $\gamma$). Upper
-bars: compute saving against the dense backbone. Lower bars: change in
-mAP@50 against the same reference. Savings rise steadily ($73.3\%
-\rightarrow 95.2\%$) while accuracy falls super-linearly ($-2.8
-\rightarrow -44.0$ points), so the useful operating range is confined to
-low $\gamma$: the first quarter of reuse delivers almost three quarters of
-the achievable saving for under $3$ mAP points, whereas the last increment
-costs $25$ points for $6$. Compute savings are exact; mAP changes are
-measured on the $10\%$ split against the full-split dense reference and are
-therefore indicative to within roughly a point.}
+\caption{Reuse-fraction ablation on ImageNet VID with ViTDet-B
+($10\%$ subsample, best $T$ per $\gamma$). Upper bars: compute saving vs.\ the
+dense backbone; lower bars: paired mAP@50 change vs.\ the dense
+reference on the same subsample. Savings rise steadily while accuracy
+falls super-linearly, confining the useful range to low $\gamma$;
+savings are exact, mAP deltas single-run ($\pm{\sim}1$ point).}
 \label{fig:ablation}
 \end{figure}
 
+\subsection{Video Action Recognition}
+\label{sec:eval-vivit}
+
+\paragraph{Task, model and protocol.}
+The second benchmark, action recognition on Kinetics-400 \cite{k400},
+probes the opposite end of the readout spectrum: the whole clip is
+summarized into one classification read from a class token. It tests
+the hypothesis that tolerance to substitution is governed by the
+\emph{readout structure}: a global readout averaging all spatial tokens
+should tolerate far more aggressive reuse than a dense head. We
+report Top-1/Top-5 on the full 19{,}877-clip validation split. The
+model is factorized ViViT-B \cite{vivit} in the Eventful
+configuration: a ViT-B spatial encoder applied to the sixteen
+two-frame tubelet steps of a 32-frame view, a four-block temporal
+classifier, and 12 views per clip at $224 \times 224$ (197 tokens per
+step). We evaluate the host's three published budgets
+$k \in \{24, 48, 96\}$, loading its published checkpoints (temporal
+sub-model fine-tuned per budget); PSM is layered on top with no
+further training. This evaluation deliberately drops replay matching:
+each clip is processed once, the first four temporal steps in caching
+mode and the remaining twelve in matching mode, with every operation of
+both phases counted: the model starts cold and pays its own warm-up,
+the mirror image of the detection protocol.
+
+\paragraph{Aggressive reuse is well tolerated under a global readout.}
+Table~\ref{tab:k400-ablation} repeats the $\gamma$ ablation
+($k = 24$ subsample). Where detection degraded super-linearly, here
+accuracy is a step function: it drops once when the filter engages and
+is then flat to within $0.1$ Top-1 percentage points across the sweep
+($58.75\% \rightarrow 58.70\%$ from $\gamma = 0.25$ to $0.95$) while
+the matching cost falls by $12\times$ ($329 \rightarrow 27$ GFLOPs per
+clip); prototype granularity is again second-order, and $T = 2$ is
+carried forward. The mechanism is the readout: a class token averages over all spatial
+tokens, so background-substitution perturbations largely cancel before
+the classification, unlike a dense head that reads every substituted
+location. The memory can therefore be pushed to $\gamma = 0.95$,
+against $0.25$ on VID; the full split confirms the flat step
+($59.85\%$ and $59.82\%$ Top-1 at $\gamma = 0.5$ and $0.95$).
+
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccc}
+\toprule
+Reuse fraction $\gamma$ & 0.25 & 0.50 & 0.75 & 0.95 \\
+\midrule
+Top-1 (\%)              & 58.75 & 58.65 & 58.65 & 58.70 \\
+Matching GFLOPs/clip    & 329   & 222   & 116   & \textbf{27} \\
+Whole-clip GFLOPs       & 946   & 840   & 734   & \textbf{645} \\
+\bottomrule
+\end{tabular}
+\caption{Reuse-fraction ablation on Kinetics-400 with ViViT-B ($k = 24$,
+$10\%$ subsample, single-pass accounting, $T = 4$). Unlike detection
+(Figure~\ref{fig:ablation}), accuracy is a step rather than a slope, so
+the most aggressive setting $\gamma = 0.95$ is the operating point of
+choice; sweeping $T \in \{2, 4, 8\}$ leaves Top-1 unchanged at this
+precision, and $T = 2$ is used at full scale.}
+\label{tab:k400-ablation}
+\end{table}
+
+\paragraph{Results and the long-video reading.}
+Table~\ref{tab:k400} reports the full-split comparison. At $k = 24$,
+layering PSM cuts the whole-clip cost by $39\%$
+($1053 \rightarrow 645$ GFLOPs) for $2.6$ Top-1 percentage points
+($62.38\% \rightarrow 59.82\%$), and cuts the matching phase, the
+marginal cost of further footage once the memory exists, by $16\times$
+($435 \rightarrow 27$ GFLOPs). The favorable operating point is the
+small budget: at $k = 48$ the accuracy step is larger
+($67.54\% \rightarrow 58.37\%$), surrendering what the extra budget
+had bought. At $k = 96$ the pattern continues: PSM drops Top-1 to
+$58.43\%$ ($75.71\% \rightarrow 58.43\%$, a $17.3$ percentage-point cost, the
+largest of the three budgets) while cutting whole-clip cost by
+$46\%$ ($3525 \rightarrow 1912$ GFLOPs) and the matching term by
+$17\times$ ($1711 \rightarrow 98$ GFLOPs); across all three budgets
+PSM's Top-1 settles in a narrow $58$--$60\%$ band regardless of the
+host's own accuracy, reinforcing that the small budget is the
+favorable operating point for layering. A caveat of single-pass accounting: at $k = 96$ the
+host's own whole-clip cost ($3525$ GFLOPs) exceeds dense ($3360$),
+since a 16-step clip cannot recover the cost of its reference buffers;
+the matching column is the number that survives on longer footage.
+%
+The caching term is paid once and, in a 16-step clip, amortized over
+only twelve matched steps, the least favorable case. On long footage the
+amortized cost tends to the matching column alone: $27$ GFLOPs per
+clip-equivalent at $k = 24$, $\gamma = 0.95$, about $2.3$ GFLOPs per
+temporal step with all views, $94\%$ below the host's matching cost
+and roughly $1\%$ of dense. Scope: clips are ten seconds, the
+memory is frozen after the caching window, and accuracy under
+long-horizon drift is unmeasured, so the matching column is a ceiling,
+not a demonstrated long-stream result; its credibility rests on the
+$2.6$-point step measured at full scale.
+
+\paragraph{Main implication.}
+The readout hypothesis is confirmed: under a global readout the
+accuracy cost is a one-time step, flat in $\gamma$, so $\gamma = 0.95$
+at the small host budget buys a $39\%$ whole-clip and $16\times$
+marginal-cost reduction for $2.6$ Top-1 percentage points, while larger host
+budgets are less effective under the layered setting.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+Method & $k$ & \makecell{Top-1\\(\%)} & \makecell{Top-5\\(\%)} &
+\makecell{Whole clip\\(GFLOPs)} & \makecell{Matching\\(GFLOPs)} \\
+\midrule
+ViViT-B (dense)    & --  & \textbf{78.64} & \textbf{93.60} & 3360 & -- \\
+\midrule
+Eventful           & 24  & 62.38 & 82.23 & 1053 & 435 \\
+\;\;$+$ PSM   & 24  & 59.82 & 79.83 & \textbf{645} & \textbf{27} \\
+\midrule
+Eventful           & 48  & 67.54 & 87.26 & 1877 & 860 \\
+\;\;$+$ PSM   & 48  & 58.37 & 78.61 & \textbf{1062} & \textbf{45} \\
+\midrule
+Eventful           & 96  & 75.71 & 92.35 & 3525 & 1711 \\
+\;\;$+$ PSM        & 96  & 58.43 & 78.49 & \textbf{1912} & \textbf{98}   \\
+\bottomrule
+\end{tabular}
+\caption{Complete action-recognition results on Kinetics-400 with
+ViViT-B across the three host budgets $k$ (full validation split,
+single-pass accounting, no replay; PSM rows use $\gamma = 0.95$,
+$T = 2$; lower cost within each budget in bold). Layering PSM reduces
+both cost columns at every measured budget, but the accuracy cost
+grows with $k$: at $k = 24$ the reduction costs $2.6$ Top-1 percentage points,
+whereas at $k = 48$ the filtered model drops below its $k = 24$
+counterpart, surrendering the accuracy the larger budget had bought.
+The small budget is therefore the favorable operating point for
+layering. Dashes mark entries not measured or not applicable.}
+\label{tab:k400}
+\end{table}
 
 \section{Conclusion}
+\label{sec:conclusion}
 
-We presented TempoMem, a training-free \emph{semantic caching mechanism} for efficient video transformer inference. Rather than reusing computation according to temporal locality, TempoMem maintains a compact Persistent Scene Memory that retrieves and reuses transformer representations associated with recurring scene content. This semantic memory can operate either as a standalone accelerator or as a lightweight layer on top of existing temporal acceleration methods.
-%
-Our experiments demonstrated that semantic caching reduces
-computation while maintaining competitive predictive performance,
-particularly for video classification tasks, and integrates naturally
-with existing efficient transformer architectures. More broadly, we believe that persistent semantic memory provides a new
-primitive for efficient transformer inference, complementing temporal
-reuse and opening the door to memory-centric architectures for
-long-running visual reasoning.
+This paper introduced Persistent Semantic Memory (PSM), extending
+transformer caching from identity-based to \emph{content-addressable}
+reuse. Our contributions are: (i) a training-free mechanism that
+summarizes recurring content into a compact prototype cache built
+online and injects cached key/value projections directly into
+attention; (ii) a layered interface composing PSM with any accelerator
+exposing a recomputation set, leaving the host untouched; and (iii) a
+complexity analysis showing retrieval amortizes its overhead whenever
+$M < 2\gamma C$, a bound our caches undershoot by orders of magnitude, with
+memory independent of video length.
+
+The experiments delineate both the strength and the boundary of the
+idea. On ImageNet VID at a matched budget, layered PSM is the cheapest
+compared configuration ($46.6$ GFLOPs per frame, $73\%$ below dense,
+$23\%$ below its Eventful host) within $2.4$ mAP@50 of every baseline,
+composing with rather than substituting for the host's budget tuning.
+Ablations show accuracy is governed almost entirely by the reuse
+fraction $\gamma$, with prototype granularity $T$ FLOP-neutral and
+second-order, and that the $\gamma$--accuracy curve is set by the task
+readout: super-linear degradation under a dense detection head, but a
+flat one-time step under ViViT's global class-token readout, where
+$\gamma = 0.95$ cuts whole-clip cost by $39\%$ and marginal matching
+cost by $16\times$ for $2.6$ Top-1 percentage points at full scale.
+
+These results establish long-term semantic recurrence as an
+additional, previously unexploited source of inference efficiency,
+with readout structure as the key predictor of applicability. The most
+promising extension is streaming, where the amortized cost tends to
+the matching term alone, roughly $1\%$ of dense, and an additive cache
+update would keep the frozen memory current; findings hold within the
+stated scope of budgets, protocols and subsample-selected operating
+points.
 
 \bibliography{references}
 

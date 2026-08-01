@@ -39,18 +39,18 @@ def evaluate_vivit_metrics(device, model, data, config):
     # Default False preserves the legacy protocol (cache on first frames,
     # match on the REMAINDER), so existing results are unaffected.
     #
-    # KNOWN LIMITATION (do not trust the caching-pass GFLOPs for ViViT):
-    # ViViT is a CLIP model. ViViTPreprocessing pads any input shorter than one
-    # temporal view back up to view_size and fans it out across
-    # temporal_views x spatial_views, and the per-view K/V cache forces the
-    # caching and matching passes to use the SAME number of views (same batch).
-    # Consequently the caching pass always processes a full multi-view forward
-    # (a constant ~dense cost, independent of n_cache_frames), so the
-    # "matching = reported metric" convention does NOT represent a net saving
-    # for the standalone ViViT path -- per video you pay caching + matching.
-    # The matching number itself is correct (matching-pass counts only); it is
-    # the amortization assumption that fails here. A real fix needs a
-    # spatial-only, preprocessing-bypassing warmup and is left as future work.
+    # Bounded caching warmup (fixes the former ViViT accounting bug):
+    # ViViT is a CLIP model. Previously the caching pass was fed a short frame
+    # slice, which ViViTPreprocessing padded back up to a full temporal view and
+    # fanned across temporal_views x spatial_views -- so the "warmup" silently
+    # cost a full dense multi-view forward (a constant ~dense number,
+    # independent of n_cache_frames). We now feed the WHOLE clip during caching
+    # but (a) truncate each view to its first n_cache_frames real frames via
+    # model._cache_frame_limit and (b) run spatial_only, skipping the temporal
+    # head. The warmup is therefore a genuine bounded cost (~n_cache_frames/T of
+    # the spatial model) and the caching + matching total is a real per-clip
+    # cost. See the caching-pass block below and _forward_spatial in
+    # src/models/tbkv_vivit.py.
     replay_matching = bool(config.get("replay_matching", False))
 
     all_cache_counts = []
@@ -66,24 +66,37 @@ def evaluate_vivit_metrics(device, model, data, config):
     
         # Clear cache between clips
         model.clear_cache()
-        video_cache = video[:, :n_cache_frames].to(device)
+        video_full = video.to(device)
         # replay_matching scores the WHOLE clip; the legacy protocol scores
         # only the frames after the caching window.
-        video_match = video.to(device) if replay_matching \
+        video_match = video_full if replay_matching \
             else video[:, n_cache_frames:].to(device)
         if video_match.shape[1] == 0:
             continue
         match_frames_total += int(video_match.shape[1])
         label = label.to(device)
 
-        # ---- Caching pass --------------------------------------------------
+        # ---- Caching pass (bounded warmup) ---------------------------------
+        # Feed the WHOLE clip so ViViTPreprocessing builds full-length views
+        # (no padding), then _cache_frame_limit truncates each view to its
+        # first n_cache_frames REAL frames, and spatial_only skips the temporal
+        # head. The warmup therefore costs ~n_cache_frames/T of the spatial
+        # model instead of a full dense multi-view forward. Temporal blocks are
+        # left without a cache and fall back to the dense path during matching
+        # (line 469 of tbkv_blocks.py; negligible cost, temporal is tiny).
         model.reset()
         model.clear_counts()
         model.counting()
         model.set_mode("caching")
-
-        with torch.inference_mode():
-            _ = model(video_cache)
+        _prev_spatial_only = model.spatial_only
+        model.spatial_only = True
+        model._cache_frame_limit = n_cache_frames
+        try:
+            with torch.inference_mode():
+                _ = model(video_full)
+        finally:
+            model.spatial_only = _prev_spatial_only
+            model._cache_frame_limit = None
 
         all_cache_counts.append(model.total_counts())
         all_cache_block_stats.append(_collect_and_clear_block_stats(model))

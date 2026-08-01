@@ -6,202 +6,245 @@
 
 \paragraph{Datasets and metrics.}
 Our primary benchmark is video object detection on the ILSVRC 2015
-ImageNet VID dataset, chosen because dense spatial prediction is the
-hardest case for token substitution and therefore the most informative
-stress test of persistent reuse. We report mean average precision at IoU
-$0.5$ (mAP@50) on the full 639-video validation split, following the
-protocol of prior work \cite{eventful,maskvd}. Two companion evaluations
-broaden the scope along the axes this benchmark leaves fixed: video
-action recognition with ViViT on Kinetics-400, where the prediction is
-read globally from a class token rather than per location (Top-1 and
-Top-5 accuracy on the full 19{,}877-clip validation split, reported in
-the action-recognition subsection below), and ViTDet-B at
-$1024 \times 1024$ input resolution. \textbf{[TBD: ViTDet-B
-$1024 \times 1024$ results.]} Compute is reported in GFLOPs measured with in-code
-operation counters (instrumented linear, matmul, einsum, bias and add
-modules) rather than analytic estimates: every reported reduction reflects
-operations actually executed, including the cost of PSM's own
-matching. Latency is CUDA-event wall-clock time per frame and memory is
-peak GPU allocation. Both are measured on a single NVIDIA Quadro RTX 6000
-(24\,GB) under a warm-up and reset protocol applied identically to every
-method.
+ImageNet VID dataset: dense spatial prediction is the hardest case for
+token substitution and therefore the most informative stress test of
+persistent reuse. We report mean average precision at IoU $0.5$ (mAP@50)
+on the full 639-video validation split, following the protocol of prior
+work \cite{eventful,maskvd}. Two companion evaluations broaden the
+scope: video action recognition with ViViT on Kinetics-400, where the
+prediction is read globally from a class token rather than per location
+(Section~\ref{sec:eval-vivit}), and the same detection benchmark at
+$1024 \times 1024$ input resolution, which raises the frame from 1{,}764
+to 4{,}096 tokens and so tests how persistent reuse behaves when the
+recompute budget is held fixed against a growing frame. Compute
+is reported in GFLOPs measured with in-code operation counters rather
+than analytic estimates: every reported reduction reflects operations
+actually executed, including the cost of PSM's own matching. Latency is
+CUDA-event wall-clock time per frame and memory is peak GPU allocation,
+both measured on a single NVIDIA Quadro RTX 6000 (24\,GB) under a
+warm-up and reset protocol applied identically to every method.
 
 \paragraph{Ablation split and hyperparameter selection.}
-Ablations use a fixed $10\%$ subsample of each dataset: 64 of the 639 VID
-videos and 1{,}988 of the 19{,}877 Kinetics-400 clips. Each subsample is
-drawn once and shared by every configuration, so all ablation comparisons
-are paired. Both subsamples come from their validation splits, so each is
-contained in, not disjoint from, the set on which headline numbers are
-reported; neither benchmark provides a third partition for tuning under
-the standard protocol, and prior work tunes on the same splits
-\cite{eventful,maskvd}. The operating points carried into the full-split
-comparisons ($\gamma = 0.25$, $T = 6$ for detection; $\gamma = 0.95$,
-$T = 2$ for action recognition) were fixed on the subsamples before the
-full-split runs; no configuration was selected on the full split. We note
-the residual selection bias this implies and observe that it is shared by
-every compared method's published protocol. Where ablation deltas are
-reported, the dense reference is recomputed on the same $10\%$ subsample
-so that all deltas are internally consistent; single-run differences
-below roughly one point (mAP@50 on VID, Top-1 on Kinetics-400) on these
-subsamples should be read as within noise.
+Ablations use a fixed $10\%$ subsample of each dataset (64 of the 639
+VID videos, 1{,}988 of the 19{,}877 Kinetics-400 clips), drawn once and
+shared by every configuration, so all ablation comparisons are paired;
+the dense reference for every reported delta is recomputed on the same
+subsample. The subsamples come from the validation splits, as in prior
+work \cite{eventful,maskvd}: neither benchmark provides a third
+partition for tuning under the standard protocol. The operating points
+carried into the full-split comparisons ($\gamma = 0.25$, $T = 6$ for
+detection; $\gamma = 0.95$, $T = 2$ for action recognition) were fixed
+on the subsamples before the full-split runs. Single-run differences below roughly one
+point (mAP@50 on VID, Top-1 on Kinetics-400) on these subsamples should
+be read as within noise.
 
 \paragraph{Detection model.}
 The detector is ViTDet-B \cite{vitdet}, a plain ViT-B backbone \cite{vit}
-with a standard detection head. The backbone has 12 blocks, with global
-self-attention at blocks 3, 6, 9 and 12 and $14 \times 14$ windowed
-attention elsewhere; tokens are 768-dimensional and attention uses 12 heads
-with learned relative position embeddings. We evaluate at $672 \times 672$
-resolution, which gives 1{,}764 tokens per frame. Every gated accelerator
-in the detection evaluation (Eventful, STGT and layered PSM) runs at a
-single common token budget of $k = 512$, roughly $29\%$ of these tokens.
-We fix the budget once, for two reasons: $k = 512$ is the
-operating point of the host's published sweep at which accuracy is nearly
-saturated (within half an mAP point of dense at this resolution), so it is
-the strongest host to layer on; and holding $k$ constant across methods
-turns every comparison into a comparison of reuse mechanisms at equal
-budget rather than of budget choices. The budget is stated here once and
-applies to every detection table and figure below. Windowed blocks carry
-relative-position biases, so PSM runs in its KV-reuse-only variant
-there and in its full form on the global-attention blocks, which account
-for most of the self-attention cost.
+with a standard detection head: 12 blocks, with global self-attention at
+blocks 3, 6, 9 and 12 and $14 \times 14$ windowed attention elsewhere;
+768-dimensional tokens, 12 heads, learned relative position embeddings.
+The primary resolution is $672 \times 672$, which gives 1{,}764 tokens
+per frame; the companion evaluation repeats the comparison at
+$1024 \times 1024$, which gives 4{,}096. Every gated accelerator in the
+detection evaluation (Eventful, STGT and layered PSM) runs at a single
+common token budget of $k = 512$ at both resolutions, roughly $29\%$ of
+the tokens at $672$ and $12.5\%$ at $1024$. We fix the budget once:
+$k = 512$ is the operating point of the host's published sweep at which
+accuracy is nearly saturated, so it is the strongest host to layer on,
+and holding $k$ constant compares reuse mechanisms at equal budget
+rather than budget choices. Carrying the same absolute $k$ across
+resolutions means the $1024$ comparison runs at a substantially tighter
+relative budget; that is the intent, since it isolates how a
+fixed-size recompute set scales against a frame that more than doubles
+in token count.
+Windowed blocks carry relative-position biases, so PSM runs in its
+KV-reuse-only variant there and in its full form on the global-attention
+blocks, which account for most of the self-attention cost.
 
 \paragraph{Protocol and cost accounting.}
-All weights are frozen, pretrained checkpoints. PSM and every compared
-method are applied as training-free, inference-time modifications, so the
-comparison isolates the reuse mechanism itself.
+All weights are frozen, pretrained checkpoints; PSM and every compared
+method are applied as training-free, inference-time modifications, so
+the comparison isolates the reuse mechanism itself.
 
-\emph{Replay matching (detection).} Each VID video is processed twice. The first pass sees
-only the first $W = 4$ frames; its sole purpose is to populate the
-persistent memory, its predictions are discarded, and its FLOPs are not
-counted. The second pass replays the entire video from frame 0 in matching
-mode, and only this pass is scored and costed. This accounting is
-conservative in the direction that hurts our method: mAP@50 covers every
-frame, and the reported GFLOPs per frame is the steady-state cost of an
-already-warm model, with no warm-up cost amortized in the method's favour.
-The dense, Eventful, STGT and MaskVD baselines are evaluated on the same
-frames under the same two-pass accounting, so every number in this section
-is directly comparable. We state the scope of this protocol explicitly: it
-models deployments in which content recurs after the memory is built, such
-as archived or looped footage, re-analysis of stored streams, and
-stationary-camera settings whose backgrounds persist across the warm-up
-boundary. It does not model a strictly single-pass live stream over
-never-repeated content, and we make no claims for that setting. The
-action-recognition benchmark deliberately adopts the complementary
-accounting, a single pass in which warm-up is paid in full and counted,
-and we describe it in that subsection. Between them the two protocols
+\emph{Replay matching (detection).} Each VID video is processed twice.
+The first pass sees only the first $W = 4$ frames and populates the
+persistent memory; its predictions are discarded and its FLOPs are not
+counted. The second pass replays the entire video from frame 0 in
+matching mode, and only this pass is scored and costed. This accounting
+is conservative in the direction that hurts our method: mAP@50 covers
+every frame, and the reported GFLOPs per frame is the steady-state cost
+of an already-warm model. All baselines are evaluated on the same frames
+under the same two-pass accounting. The protocol models deployments in
+which content recurs after the memory is built (archived or looped
+footage, re-analysis of stored streams, stationary cameras); it does
+not model a strictly single-pass live stream over never-repeated
+content, and we make no claims for that setting. The action-recognition
+benchmark adopts the complementary accounting, a single pass in which
+warm-up is paid in full and counted; between them the two protocols
 bracket the deployment space.
 
-\emph{Layered instantiation.} Eventful Transformers \cite{eventful} serve
-as the host throughout. An Eventful block gates the qkv input, the
+\emph{Layered instantiation.} Eventful Transformers \cite{eventful}
+serve as the host throughout. An Eventful block gates the qkv input, the
 attention-output projection and the MLP: it selects the top-$k$
 most-changed tokens for recomputation and reuses buffered values for the
-rest, with $k$ acting as its compute budget. The layered filter plugs in at
-the qkv gate. It removes the fraction $\gamma$ of the gate's top-$k$
-proposal that best matches the persistent memory and forces the surviving
-set onto all three gates (Algorithm~\ref{alg:eventfultm}). At $\gamma = 0$
-every gate receives exactly its Eventful proposal, so the pipeline reduces
-to Eventful itself, and every layered comparison is controlled down to the
-single knob $\gamma$.
+rest. The layered filter plugs in at the qkv gate. It removes the
+fraction $\gamma$ of the gate's top-$k$ proposal that best matches the
+persistent memory and forces the surviving set onto all three gates
+(Algorithm~\ref{alg:eventfultm}). At $\gamma = 0$ the pipeline reduces
+to Eventful itself, so every layered comparison is controlled down to
+the single knob $\gamma$.
 
 \subsection{Comparison with the State of the Art}
 \label{sec:eval-sota}
 
 \paragraph{Accuracy--compute trade at a common budget.}
 Figure~\ref{fig:frontier} places all methods in the accuracy--compute
-plane at the common token budget. The main result is a large and
-uniform reduction in compute. Layered PSM runs at $46.6$ GFLOPs per
-frame, the lowest of any method by a clear margin: $73\%$ below the dense
-backbone, $23\%$ below Eventful, $32\%$ below STGT and $42\%$ below MaskVD.
-The accuracy cost is small. PSM scores $79.87$ mAP@50, at most $2.4$
-points below the most accurate method (dense, at $82.28$) and $1.9$ below
-the strongest accelerator (Eventful, at $81.80$). Among the configurations
-compared at this budget, no method is simultaneously cheaper and more
-accurate, so PSM sits at the low-compute end of the observed
-frontier, and it beats the spatially compounded Eventful variant on both
-axes at once ($46.6$ vs.\ $52.8$ GFLOPs, $79.87$ vs.\ $79.48$ mAP@50).
-Against STGT the compute margin is wide ($46.6$ vs.\ $68.5$ GFLOPs) at
-comparable accuracy.
+plane at $672 \times 672$ and the common token budget. The main result is a large and uniform
+reduction in compute. Layered PSM runs at $46.6$ GFLOPs per frame, the
+lowest of any method by a clear margin: $73\%$ below the dense backbone,
+$23\%$ below Eventful, $32\%$ below STGT and $42\%$ below MaskVD. The
+accuracy cost is small: PSM scores $79.87$ mAP@50, at most $2.4$ points
+below the most accurate method (dense, at $82.28$) and $1.9$ below the
+strongest accelerator (Eventful, at $81.80$). No compared configuration
+is simultaneously cheaper and more accurate, so PSM sits at the
+low-compute end of the observed frontier, and it beats the spatially
+compounded Eventful variant on both axes at once ($46.6$ vs.\ $52.8$
+GFLOPs, $79.87$ vs.\ $79.48$ mAP@50); against STGT the compute margin is
+wide at comparable accuracy.
 
-We scope this claim deliberately. It is a statement about the compared
-configurations at $k = 512$, not about the full frontier each baseline
-could trace by sweeping its own budget. In particular, Eventful can reach
-the same compute point by lowering $k$: interpolating its published
-budget--accuracy curve, an Eventful configuration matched to $46.6$ GFLOPs
-would recover roughly $1.5$ mAP over PSM, and we plot this
-matched-FLOPs point alongside ours in Figure~\ref{fig:frontier} rather than
-leaving it to prose. The two mechanisms are therefore complementary routes
-into the low-compute regime, not a strict accuracy win for content-based
-reuse. What the comparison establishes is narrower and still useful:
-layered on the host at a fixed budget, persistent memory reaches a more
-aggressive compute point than the host alone provides, while staying within
-a couple of mAP points of the field. That trade is attractive wherever
-compute, not the last point of accuracy, is the binding constraint.
+This is a statement about the compared configurations at $k = 512$, not
+about the full frontier each baseline could trace by sweeping its own
+budget. In particular, interpolating Eventful's published
+budget--accuracy curve, a configuration matched to $46.6$ GFLOPs would
+recover roughly $1.5$ mAP over PSM; we plot this matched-FLOPs point in
+Figure~\ref{fig:frontier}. The two
+mechanisms are therefore complementary routes into the low-compute
+regime, not a strict accuracy win for content-based reuse: layered on
+the host at a fixed budget, persistent memory reaches a more aggressive
+compute point than the host alone provides while staying within a couple
+of mAP points of the field, a trade that is attractive wherever compute,
+not the last point of accuracy, is the binding constraint.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{fig_vid672_frontier.pdf}
-\caption{Accuracy--compute plane on ViTDet-B / ImageNet VID at
-$672 \times 672$ (full 639-video split, replay-matching accounting, all
-accelerators at the common budget). Layered PSM ($\gamma = 0.25$,
-$T = 6$) is the lowest-compute method at $46.6$ GFLOPs per frame, for an
-accuracy cost of at most $2.4$ mAP@50 against any compared configuration;
-the open marker is the budget-matched Eventful point interpolated from
-its published sweep. Points toward the lower right are better.}
+\caption{Accuracy--compute trade-off on ImageNet VID with ViTDet-B at
+$672 \times 672$ (full validation split, all accelerators at the common
+budget $k = 512$). Layered PSM ($\gamma = 0.25$, $T = 6$) is the
+lowest-compute method at $46.6$ GFLOPs per frame, for an accuracy cost
+of at most $2.4$ mAP@50 against any compared configuration; the open
+marker is the budget-matched Eventful point interpolated from its
+published sweep. Points toward the lower right are better.}
 \label{fig:frontier}
 \end{figure}
 
 \paragraph{Deployment cost: latency and memory.}
-Table~\ref{tab:vid672} reports the same comparison with measured wall-clock
-latency and peak memory, which tell a different story from FLOPs alone.
+The upper block of Table~\ref{tab:vid} reports the same comparison with
+measured wall-clock latency and peak memory, which tell a different
+story from FLOPs alone.
 
-PSM consumes more memory than the other methods, as expected: it is the
-only one that maintains an explicit content cache. The cost is bounded,
-however. The memory is collapsed to a fixed-size set of prototypes at the
-end of the caching window (Proposition~\ref{prop:cachesize}: $O(MC)$ per
-block, independent of stream duration), so its size is governed by scene
-complexity and does not grow with video length. The high absolute
-footprint in the table (2329\,MB) is specific to the layered setting,
-where the bounded cache stacks on the Eventful host's own reference and
-accumulator buffers rather than replacing them; buffer sharing between
-cache and host is the direct route to reducing it.
+PSM has the highest memory footprint in the table, as expected: it is
+the only method that maintains an explicit content cache. The breakdown
+is informative, however. The host's own reference and accumulator
+buffers already account for 2324\,MB, so the cache itself, collapsed to
+a fixed-size set of prototypes at the end of the caching window, adds
+only about 5\,MB on top; its size is governed by scene complexity and
+does not grow with video length. The footprint is thus a property of the
+layered setting rather than of the persistent memory, and buffer sharing
+between cache and host is the direct route to reducing it.
 
-Latency is a milder story. At 60.0\,ms, PSM is slightly slower than
-the gated baselines (STGT at 55.1\,ms, MaskVD at 54.9\,ms) but comparable
-to them, and it is faster than the dense backbone (70.1\,ms). Two limits
-deserve to be stated plainly. First, the most relevant comparison, against
-the host Eventful's own $k = 512$ latency and memory, is not yet available
-(Table~\ref{tab:vid672}), so we claim comparability with the gated
-baselines we did measure, not latency parity with the host. Second, we
-attribute the residual gap to unfused matching and gather/scatter kernels,
-but we have not built a fused implementation, so this attribution is a
-hypothesis rather than a demonstrated ceiling. The FLOP reduction is real;
-whether it becomes a proportional wall-clock gain is engineering work that
-lies outside this paper.
+Latency is a milder story. At 60.0\,ms, PSM runs within about a
+millisecond of its host (Eventful, 58.9\,ms), slightly behind the other
+gated baselines (STGT at 55.1\,ms, MaskVD at 54.9\,ms) and well ahead of
+the dense backbone (70.1\,ms). We attribute the gap between the $23\%$
+FLOP reduction over the host and this near-parity in wall-clock time to
+unfused matching and gather/scatter kernels, but we have not built a
+fused implementation, so this attribution is a hypothesis rather than a
+demonstrated ceiling. The FLOP reduction is real; converting it into a
+proportional wall-clock gain is engineering work that lies outside this
+paper.
+
+\paragraph{Scaling to $1024 \times 1024$.}
+The lower block of Table~\ref{tab:vid} repeats the comparison at
+$1024 \times 1024$, where a frame carries 4{,}096 tokens and the common
+budget is therefore $12.5\%$ of them rather than $29\%$. Two things
+change, one in each direction.
+
+The compute advantage widens. PSM runs at $69.1$ GFLOPs per frame,
+$85\%$ below the dense backbone against $73\%$ at $672$, and $58\%$
+below STGT. This is the expected consequence of gating at a fixed
+budget: the cost of a recompute set is set by $k$, not by the size of
+the frame it is drawn from, so the saving relative to dense grows with
+resolution. The same mechanism lifts Eventful with spatial pooling from
+$30\%$ to $15\%$ of dense, while STGT improves only marginally
+($39\%$ to $35\%$) because it gates the projections but still evaluates
+attention over all tokens.
+
+The accuracy picture tightens against us. Of the three methods measured
+at both resolutions PSM loses the most, $4.3$ points
+($79.87 \rightarrow 75.57$) against $3.8$ for STGT and $2.5$ for the
+pooled variant, while the dense backbone gains $0.65$
+($82.28 \rightarrow 82.93$). At $75.57$ mAP@50 PSM is $7.4$ points below
+dense and, more tellingly, $1.4$ points below Eventful compounded with
+spatial pooling at essentially the same compute ($69.1$ vs $70.9$
+GFLOPs). The advantage over that compounded baseline observed at $672$,
+where PSM won on both axes at once, therefore does not survive the
+resolution change: at $1024$ the two sit at one compute point and the
+pooled variant is the more accurate of them. PSM is still the cheapest
+configuration measured here, but it buys the last $2.6\%$ of compute
+with $1.4$ mAP, a worse exchange than the one it offers at $672$. We
+read this as the dense-readout limit reasserting itself: at a $12.5\%$
+budget the filter is substituting tokens the detection head reads
+directly, and the reuse fraction that was near-free at $672$ is not at
+$1024$. Re-tuning $\gamma$ per resolution, rather than carrying the
+$672$ operating point over unchanged, is the obvious next step.
+
+Memory is the other cost that grows. At $8062$\,MB PSM is the heaviest
+method in the table by a factor of $2.4$ over the next-highest, and the
+$672$ decomposition that attributed almost all of the footprint to the
+host's own buffers cannot be repeated here, because the Eventful
+reference at this resolution has not been measured. We report the number
+without attributing it. Latency follows the $672$ pattern: at
+$143.0$\,ms PSM is $19\%$ faster than dense but slower than the other
+gated methods, consistent with the unfused matching and gather/scatter
+kernels identified above.
 
 \begin{table}[t]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lcccc}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{clcccc}
 \toprule
-Method & \makecell{GFLOPs\\/fr.} & \makecell{Lat.\\(ms)} & \makecell{Mem.\\(MB)} & \makecell{mAP@50\\(\%)} \\
+Res. & Method & \makecell{GFLOPs\\/fr.} & \makecell{Lat.\\(ms)} & \makecell{Mem.\\(MB)} & \makecell{mAP@50\\(\%)} \\
 \midrule
-ViTDet-B (dense)      & 174.5 & 70.1 & \textbf{965}  & \textbf{82.28} \\
-Eventful              & 60.7  & \textbf{[TBD]} & \textbf{[TBD]} & 81.80 \\
-\;\;$+$ spatial pool  & 52.8  & \textbf{49.0} & 1577 & 79.48 \\
-STGT                  & 68.5  & 55.1 & 1447 & 80.45 \\
-MaskVD                & 80.9  & 54.9 & 1133 & 82.05 \\
-PSM (layered)    & \textbf{46.6} & 60.0 & 2329 & 79.87 \\
+\multirow{6}{*}{672}
+ & ViTDet-B (dense)     & 174.5 & 70.1 & \textbf{965}  & \textbf{82.28} \\
+ & Eventful             & 60.7  & 58.9 & 2324 & 81.80 \\
+ & \;\;$+$ spatial pool & 52.8  & \textbf{49.0} & 1577 & 79.48 \\
+ & STGT                 & 68.5  & 55.1 & 1447 & 80.45 \\
+ & MaskVD               & 80.9  & 54.9 & 1133 & 82.05 \\
+ & PSM (layered)        & \textbf{46.6} & 60.0 & 2329 & 79.87 \\
+\midrule
+\multirow{6}{*}{1024}
+ & ViTDet-B (dense)     & 467.4 & 176.1 & \textbf{2275} & \textbf{82.93} \\
+ & Eventful             & --    & --    & --   & --    \\
+ & \;\;$+$ spatial pool & 70.9  & \textbf{98.5} & 3426 & 76.98 \\
+ & STGT                 & 164.0 & 133.1 & 3391 & 76.70 \\
+ & MaskVD               & --    & --    & --   & --    \\
+ & PSM (layered)        & \textbf{69.1} & 143.0 & 8062 & 75.57 \\
 \bottomrule
 \end{tabular}
-\caption{ViTDet-B / ImageNet VID at $672 \times 672$, full 639-video split,
-single Quadro RTX 6000, identical timing protocol, all gated methods at
-the common budget. PSM (layered) uses $\gamma = 0.25$, $T = 6$;
+\caption{Deployment cost on ImageNet VID with ViTDet-B at two input
+resolutions (full validation split, all gated methods at the common
+budget $k = 512$). PSM (layered) uses $\gamma = 0.25$, $T = 6$;
 ``$+$ spatial pool'' is Eventful compounded with $2{\times}2$ key/value
-pooling. Best value per column in bold. \textbf{[TBD: Eventful
-latency and memory at $k = 512$; the completed sweep logged these only at
-$k = 128$ (51.8\,ms / 2323\,MB) and $k = 256$ (54.4\,ms / 2743\,MB).]}}
-\label{tab:vid672}
+pooling. A $672$ frame carries 1{,}764 tokens, so $k$ is $29\%$ of them;
+a $1024$ frame carries 4{,}096, so $k$ is $12.5\%$. Holding $k$ fixed in
+absolute terms therefore makes $1024$ a much tighter relative budget,
+which is why every gated method loses accuracy there while the dense
+backbone gains. Best value per column within each resolution block in
+bold. Dashes mark configurations not measured.}
+\label{tab:vid}
 \end{table}
 
 \subsection{Ablation Study}
@@ -209,155 +252,119 @@ $k = 128$ (51.8\,ms / 2323\,MB) and $k = 256$ (54.4\,ms / 2743\,MB).]}}
 
 \paragraph{Reuse fraction $\gamma$.}
 Figure~\ref{fig:ablation} ablates, on the detection benchmark, the reuse
-fraction $\gamma$, the single knob that determines how much of the host's
-recompute set the persistent memory absorbs. All deltas in this section are computed against the dense
-reference on the same $10\%$ subsample, so the comparisons are paired
-throughout. Compute savings grow smoothly with $\gamma$, from $73.3\%$ to
-$95.2\%$ relative to the dense backbone, as the effective token-skipping
-ratio rises from $78.2\%$ to $98.5\%$. Accuracy, however, degrades
-super-linearly rather than in proportion. The first step is nearly free: at
-$\gamma = 0.25$ the filter discards a quarter of the proposed tokens for a
-cost of $2.8$ mAP points, and this already delivers almost three quarters
-of the achievable saving. Doubling the reuse fraction to $\gamma = 0.5$
-costs $7.3$ points for only $7.8$ further points of saving. Beyond that the
-exchange collapses: $\gamma = 0.75$ loses $18.6$ points and $\gamma = 0.95$
-loses $44.0$, at which stage the detector has been degraded past usefulness
-in exchange for a final $6$ points of compute. These losses are an order of
-magnitude above the subsample's noise floor, so the shape of the curve is
-not in question even from single runs. The practical operating range for
-dense spatial prediction is therefore the low-$\gamma$ regime, and
+fraction $\gamma$, the single knob that determines how much of the
+host's recompute set the persistent memory absorbs; all deltas are
+paired against the dense reference on the same $10\%$ subsample. Compute
+savings grow smoothly with $\gamma$, from $73.3\%$ to $95.2\%$ relative
+to the dense backbone, as the effective token-skipping ratio rises from
+$78.2\%$ to $98.5\%$. Accuracy, however, degrades super-linearly rather
+than in proportion. The first step is nearly free: at $\gamma = 0.25$
+the filter discards a quarter of the proposed tokens for a cost of $2.8$
+mAP points, and this already delivers almost three quarters of the
+achievable saving. Doubling the reuse fraction to $\gamma = 0.5$ costs
+$7.3$ points for only $7.8$ further points of saving. Beyond that the
+exchange collapses: $\gamma = 0.75$ loses $18.6$ points and
+$\gamma = 0.95$ loses $44.0$. These losses are an order of magnitude
+above the subsample's noise floor, so the shape of the curve is not in
+question. The practical operating range for dense
+spatial prediction is therefore the low-$\gamma$ regime, and
 $\gamma = 0.25$ is the configuration carried into the comparison above.
 
 \paragraph{Prototype granularity ($T$ merge passes).}
 The second knob is the number of merge passes $T$ used to compress the
-accumulated tokens into cache prototypes. Unlike $\gamma$, $T$ changes only
-which tokens the memory holds, not how many are recomputed, so it leaves
-GFLOPs untouched at every operating point: it is a pure accuracy-side knob
-and can be tuned for free. Its measured effect on accuracy is small and
-non-monotonic. Sweeping $T \in \{2,4,6,8\}$ at fixed $\gamma$ moves mAP@50
-by at most $1.2$ points in the usable range $\gamma \le 0.75$
-($79.14$--$79.49$ at $\gamma = 0.25$; $74.35$--$75.02$ at $\gamma = 0.5$),
-with no consistent direction. Because these spreads sit near the
-single-run noise floor of the $64$-video subsample, we do not interpret
-their ordering; the supported conclusion is an insensitivity result, in two
-parts. First, the method is robust to this hyperparameter: there is no
-fragile sweet spot, and the mid-range value $T = 6$ is a safe default,
-being the per-$\gamma$ best or within $0.3$ points of it at every
-low-$\gamma$ setting. Second, the near-indifference to prototype
-granularity indicates that detection accuracy is governed by how many
-tokens are replaced (set by $\gamma$), not by how finely the cache
-summarises them. This is consistent with the frontier result: the accuracy
-cost is intrinsic to substituting spatial tokens at all, not an artefact of
-a coarse cache. The spread does widen once $\gamma$ reaches the degenerate
-value $0.95$ ($\pm 2.8$ points), but that regime is already off the useful
-part of the curve.
+accumulated tokens into cache prototypes. Unlike $\gamma$, $T$ changes
+only which tokens the memory holds, not how many are recomputed, so it
+leaves GFLOPs untouched at every operating point. Its effect on accuracy
+is small and non-monotonic: sweeping $T \in \{2,4,6,8\}$ at fixed
+$\gamma$ moves mAP@50 by at most $1.2$ points in the usable range
+$\gamma \le 0.75$, with no consistent direction, and these spreads sit
+near the subsample's single-run noise floor, so we do not interpret
+their ordering. The supported conclusion is an insensitivity result:
+there is no fragile sweet spot, and the mid-range value $T = 6$ is a
+safe default, being the per-$\gamma$ best or within $0.3$ points of it
+at every low-$\gamma$ setting. Moreover, detection accuracy is governed
+by how many tokens are replaced, set by $\gamma$, not by how finely the
+cache summarises them: the accuracy cost is intrinsic to substituting
+spatial tokens at all, not an artefact of a coarse cache. The spread
+widens only at the degenerate value $\gamma = 0.95$ ($\pm 2.8$ points),
+already off the useful part of the curve.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{fig_vid672_ablation.pdf}
-\caption{Ablation of the reuse fraction $\gamma$ on ViTDet-B / ImageNet VID
-($10\%$ subsample, replay matching, best $T$ per $\gamma$). Upper bars:
-compute saving against the dense backbone; lower bars: paired change in
-mAP@50 against the dense reference on the same subsample. Savings rise
-steadily while accuracy falls super-linearly, confining the useful
-operating range to low $\gamma$. Compute savings are exact; mAP deltas
-are single-run, reliable to within roughly a point.}
+\caption{Reuse-fraction ablation on ImageNet VID with ViTDet-B
+($10\%$ subsample, best $T$ per $\gamma$). Upper bars: compute saving
+against the dense backbone; lower bars: paired change in mAP@50 against
+the dense reference on the same subsample. Savings rise steadily while
+accuracy falls super-linearly, confining the useful operating range to
+low $\gamma$. Compute savings are exact; mAP deltas are single-run,
+reliable to within roughly a point.}
 \label{fig:ablation}
 \end{figure}
 
 \subsection{Video Action Recognition}
 \label{sec:eval-vivit}
 
-% Bib entries needed for \cite{vivit} and \cite{kinetics400}:
-% @inproceedings{vivit,
-%   title     = {ViViT: A Video Vision Transformer},
-%   author    = {Arnab, Anurag and Dehghani, Mostafa and Heigold, Georg and
-%                Sun, Chen and Lu{\v{c}}i{\'c}, Mario and Schmid, Cordelia},
-%   booktitle = {Proceedings of the IEEE/CVF International Conference on
-%                Computer Vision},
-%   year      = {2021}
-% }
-% @article{kinetics400,
-%   title   = {The Kinetics Human Action Video Dataset},
-%   author  = {Kay, Will and Carreira, Joao and Simonyan, Karen and
-%              Zhang, Brian and Hillier, Chloe and
-%              Vijayanarasimhan, Sudheendra and Viola, Fabio and
-%              Green, Tim and Back, Trevor and Natsev, Paul and
-%              Suleyman, Mustafa and Zisserman, Andrew},
-%   journal = {arXiv preprint arXiv:1705.06950},
-%   year    = {2017}
-% }
-
 \paragraph{Task and model.}
 The second benchmark moves to the opposite end of the readout spectrum:
-video action recognition on Kinetics-400 \cite{kinetics400}, which
-assigns one of 400 action classes to a short ($\sim$10\,s) video clip.
-Where VID scores a prediction at every spatial location, here the entire
-clip is summarised into a single classification read from a class token,
-so this task probes how token substitution behaves when the output is
-global rather than dense. We evaluate on the full 19{,}877-clip
-validation split and report Top-1 and Top-5 accuracy.
+video action recognition on Kinetics-400 \cite{k400}, which assigns one
+of 400 action classes to a short ($\sim$10\,s) video clip. Where VID
+scores a prediction at every spatial location, here the entire clip is
+summarised into a single classification read from a class token, so this
+task probes how token substitution behaves when the output is global
+rather than dense. We report Top-1 and Top-5 accuracy on the full
+19{,}877-clip validation split.
 
 The model is ViViT-B \cite{vivit} in its factorised form, in the
-configuration of the Eventful host \cite{eventful}. Its spatial
-sub-model is a ViT-B encoder of 12 blocks with 768-dimensional tokens and
-12 heads; it prepends a class embedding token and uses neither windowed
-attention nor relative position embeddings. That sub-model is applied
-sequentially to the sixteen two-frame tubelet steps of a 32-frame view,
-and a four-block temporal sub-model then classifies the resulting
-sequence of per-step embeddings. Predictions are
-averaged over 12 views per clip (4 temporal $\times$ 3 spatial crops) at
-$224 \times 224$ resolution, which gives 197 tokens per step. The spatial
-sub-model dominates the compute and is the component the host
-accelerates. As on detection, $k$ is Eventful's token budget: the number
-of most-changed tokens its gates select for recomputation on each step,
-with buffered values reused for the rest. We evaluate the three budgets
-of the host's published sweep, $k \in \{24, 48, 96\}$ of the 197 tokens
-per step (the analogue of $k = 512$ of 1{,}764 on VID); a larger $k$
-means more recomputation, hence higher accuracy at higher cost. Each
-budget loads the host's published checkpoint, whose temporal sub-model
-was fine-tuned on Eventful spatial outputs at that budget
-\cite{eventful}. PSM is layered on top of these checkpoints with no
-further training, exactly as on detection.
+configuration of the Eventful host \cite{eventful}: a ViT-B spatial
+encoder (12 blocks, 768-dimensional tokens, 12 heads, a prepended class
+embedding token, no windowed attention or relative position embeddings)
+is applied sequentially to the sixteen two-frame tubelet steps of a
+32-frame view, and a four-block temporal sub-model classifies the
+resulting sequence of per-step embeddings. Predictions are averaged over
+12 views per clip (4 temporal $\times$ 3 spatial crops) at
+$224 \times 224$ resolution, which gives 197 tokens per step. The
+spatial sub-model dominates the compute and is the component the host
+accelerates. We evaluate the three budgets of the host's published
+sweep, $k \in \{24, 48, 96\}$ of the 197 tokens per step; each budget
+loads the host's published checkpoint, whose temporal sub-model was
+fine-tuned on Eventful spatial outputs at that budget \cite{eventful}.
+PSM is layered on top of these checkpoints with no further training,
+exactly as on detection.
 
 \paragraph{Single-pass protocol.}
 This evaluation deliberately drops replay matching. Each clip is
 processed exactly once, in temporal order: the first four temporal steps
 of each view run through the host in caching mode and populate the
 persistent memory, the remaining twelve run in matching mode, and every
-operation of both phases is counted, so the reported cost per clip is the
-sum of the caching and matching terms. Nothing is amortised away and no
-frame is seen twice. This is the accounting a real deployment faces: a
-model starts cold on a stream, pays for its own warm-up, and has to
-recover that investment within the footage it actually sees. It is the
-mirror image of the replay protocol used for detection, which isolates
-the steady state of an already-warm model. Reporting both
-regimes, each on the benchmark where it is most informative, brackets the
-cost accounting rather than choosing the flattering end of it.
+operation of both phases is counted. Nothing is amortised away and no
+frame is seen twice: the model starts cold on a stream, pays for its own
+warm-up, and has to recover that investment within the footage it
+actually sees. This is the mirror image of the replay protocol used for
+detection, which isolates the steady state of an already-warm model;
+reporting both regimes brackets the cost accounting rather than choosing
+the flattering end of it.
 
 \paragraph{Aggressive reuse is free on a global readout.}
 Table~\ref{tab:k400-ablation} repeats the reuse-fraction ablation on the
-Kinetics-400 $10\%$ subsample (1{,}988 clips, $k = 24$). The contrast
-with detection is stark. On VID, accuracy degraded super-linearly in
-$\gamma$ and collapsed beyond $\gamma = 0.5$; here it is a step function.
-Accuracy drops once, when the filter first engages, and is then flat to
-within $0.1$ Top-1 points across the entire sweep
+Kinetics-400 $10\%$ subsample ($k = 24$). The contrast with detection is
+stark. On VID, accuracy degraded super-linearly in $\gamma$; here it is
+a step function. Accuracy drops once, when the filter first engages, and
+is then flat to within $0.1$ Top-1 points across the entire sweep
 ($58.75\% \rightarrow 58.70\%$ from $\gamma = 0.25$ to $\gamma = 0.95$)
 while the matching cost falls by $12\times$ ($329 \rightarrow 27$ GFLOPs
 per clip). Sweeping the merge-pass count $T$ at fixed $\gamma$ moved
-Top-1 by less than the reporting precision on our grid, so, as on
-detection, prototype granularity is a second-order effect; we carry
-$T = 2$ forward. The mechanism is the readout: a class token aggregates
-over all spatial tokens, so the perturbation introduced by substituting
-mostly-static background tokens is largely averaged out before it reaches
-the classification, whereas a dense detection head reads every
-substituted location directly. The consequence is that the persistent
-memory can be pushed far harder here than on detection: the selected
-operating point is $\gamma = 0.95$, against $\gamma = 0.25$ on VID. That
-makes global-readout video understanding the class of task persistent
-reuse is most tailored to. The full-split runs confirm that
-the step stays flat at scale: $\gamma = 0.5$ and $\gamma = 0.95$ score
-$59.85\%$ and $59.82\%$ Top-1, respectively.
+Top-1 by less than the reporting precision, so prototype granularity is
+again a second-order effect; we carry $T = 2$
+forward. The mechanism is the readout: a class token aggregates over all
+spatial tokens, so the perturbation introduced by substituting
+mostly-static background tokens is largely averaged out before it
+reaches the classification, whereas a dense detection head reads every
+substituted location directly. The persistent memory can therefore be
+pushed far harder here than on detection: the selected operating point
+is $\gamma = 0.95$, against $\gamma = 0.25$ on VID. The full-split runs
+confirm that the step stays flat at scale: $\gamma = 0.5$ and
+$\gamma = 0.95$ score $59.85\%$ and $59.82\%$ Top-1, respectively.
 
 \begin{table}[t]
 \centering
@@ -372,51 +379,50 @@ Matching GFLOPs/clip    & 329   & 222   & 116   & \textbf{27} \\
 Whole-clip GFLOPs       & 946   & 840   & 734   & \textbf{645} \\
 \bottomrule
 \end{tabular}
-\caption{Reuse-fraction ablation on ViViT-B / Kinetics-400 ($k = 24$,
-$10\%$ subsample of 1{,}988 clips, single-pass accounting, $T = 4$).
-Unlike detection (Figure~\ref{fig:ablation}), accuracy is a step rather
-than a slope, so the most aggressive setting $\gamma = 0.95$ is the
-operating point of choice; sweeping $T \in \{2, 4, 8\}$ leaves Top-1
-unchanged at this precision, and $T = 2$ is used at full scale.}
+\caption{Reuse-fraction ablation on Kinetics-400 with ViViT-B ($k = 24$,
+$10\%$ subsample, single-pass accounting, $T = 4$). Unlike detection
+(Figure~\ref{fig:ablation}), accuracy is a step rather than a slope, so
+the most aggressive setting $\gamma = 0.95$ is the operating point of
+choice; sweeping $T \in \{2, 4, 8\}$ leaves Top-1 unchanged at this
+precision, and $T = 2$ is used at full scale.}
 \label{tab:k400-ablation}
 \end{table}
 
 \paragraph{Results.}
 Table~\ref{tab:k400} reports the full-split comparison across host
-budgets at the selected operating point. At $k = 24$, layering PSM
-on the host cuts the whole-clip cost by $39\%$
-($1053 \rightarrow 645$ GFLOPs) for $2.6$ Top-1 points
-($62.38\% \rightarrow 59.82\%$). It cuts the matching phase, which is the
-entire marginal cost of processing further footage once the memory
-exists, by $16\times$ ($435 \rightarrow 27$ GFLOPs). The favourable operating
-point is the small budget: at $k = 48$ the one-time accuracy step is
-larger ($67.54\% \rightarrow 58.37\%$), so the filtered model surrenders
-the accuracy the extra budget had bought. \textbf{[TBD: $k = 96$ PSM
-run.]} We also note an honest quirk of single-pass accounting: at
-$k = 96$ the host's own whole-clip cost ($3525$ GFLOPs) exceeds the dense
-backbone ($3360$), because on a 16-step clip the savings from gating do
-not recover the cost of building and maintaining its reference buffers.
-The matching column is the number that survives on longer footage.
+budgets at the selected operating point. At $k = 24$, layering PSM on
+the host cuts the whole-clip cost by $39\%$ ($1053 \rightarrow 645$
+GFLOPs) for $2.6$ Top-1 points ($62.38\% \rightarrow 59.82\%$), and cuts
+the matching phase, the entire marginal cost of processing further
+footage once the memory exists, by $16\times$
+($435 \rightarrow 27$ GFLOPs). The favourable operating point is the
+small budget: at $k = 48$ the one-time accuracy step is larger
+($67.54\% \rightarrow 58.37\%$), so the filtered model surrenders the
+accuracy the extra budget had bought.
+We also note an honest quirk of single-pass accounting: at $k = 96$ the
+host's own whole-clip cost ($3525$ GFLOPs) exceeds the dense backbone
+($3360$), because on a 16-step clip the savings from gating do not
+recover the cost of building and maintaining its reference buffers. The
+matching column is the number that survives on longer footage.
 
 \paragraph{The long-video reading.}
 The split of Table~\ref{tab:k400} into caching and matching terms is the
 point of the single-pass protocol. The caching term is paid once per
 memory build, and in a 16-step clip it is amortised over only twelve
-matched steps, the least favourable case this accounting can present.
-On a long video or a streaming deployment, where the memory persists
-across footage far longer than its caching window, the amortised cost
-tends to the matching column alone: at $k = 24$, $\gamma = 0.95$, that is
-$27$ GFLOPs per 16-step clip-equivalent, or about $2.3$ GFLOPs per
-temporal step with all 12 views included. That is $94\%$ below the host's
-own matching cost and roughly $1\%$ of the dense backbone. We state the scope of this
-extrapolation plainly: the measured clips are ten seconds long, the
-current implementation freezes the memory after the caching window, and
-while the matching cost is constant by construction, accuracy under
-long-horizon content drift is unmeasured. The matching column is
-therefore a ceiling on streaming savings rather than a demonstrated
-long-stream result; what makes it credible is that the per-clip accuracy
-cost of reaching it is the $2.6$-point step already measured at full
-scale.
+matched steps, the least favourable case this accounting can present. On
+long footage, where the memory persists far beyond its caching window,
+the amortised cost tends to
+the matching column alone: at $k = 24$, $\gamma = 0.95$, that is $27$
+GFLOPs per 16-step clip-equivalent, or about $2.3$ GFLOPs per temporal
+step with all 12 views included, $94\%$ below the host's own matching
+cost and roughly $1\%$ of the dense backbone. The scope of this
+extrapolation is stated plainly: the measured clips are ten seconds
+long, the current implementation freezes the memory after the caching
+window, and accuracy under long-horizon content drift is unmeasured, so
+the matching column is a ceiling on streaming savings rather than a
+demonstrated long-stream result. What makes it credible is that the
+per-clip accuracy cost of reaching it is the $2.6$-point step already
+measured at full scale.
 
 \begin{table}[t]
 \centering
@@ -436,19 +442,18 @@ Eventful           & 48  & 67.54 & 87.26 & 1877 & 860 \\
 \;\;$+$ PSM   & 48  & 58.37 & 78.61 & 1062 & 45 \\
 \midrule
 Eventful           & 96  & 75.71 & 92.35 & 3525 & 1711 \\
-\;\;$+$ PSM   & 96  & \textbf{[TBD]} & \textbf{[TBD]} &
-\textbf{[TBD]} & \textbf{[TBD]} \\
+\;\;$+$ PSM        & 96  & --    & --    & --   & --   \\
 \bottomrule
 \end{tabular}
-\caption{ViViT-B / Kinetics-400, full 19{,}877-clip validation split,
-single-pass accounting (caching and matching both counted, no replay).
-PSM rows use the ablation-selected $\gamma = 0.95$, $T = 2$.
-``Whole clip'' is the total cost of one 16-step clip including
-construction of the persistent memory; ``Matching'' is the matching phase
-alone, i.e.\ the marginal cost of further footage once the memory exists,
-and therefore the steady-state cost in a long-video or streaming
-deployment. Best value per column in bold. \textbf{[TBD: $k = 96$ PSM
-run.]}}
+\caption{Action recognition on Kinetics-400 with ViViT-B (full
+validation split, single-pass accounting: caching and matching both
+counted, no replay). PSM rows use the ablation-selected $\gamma = 0.95$,
+$T = 2$. ``Whole clip'' is the total cost of one 16-step clip including
+construction of the persistent memory; ``Matching'' is the marginal cost
+of further footage once the memory exists, and therefore the
+steady-state cost in a long-video or streaming deployment. Best value
+per column in bold. Dashes mark entries not measured or not
+applicable.}
 \label{tab:k400}
 \end{table}
 
@@ -456,41 +461,37 @@ run.]}}
 \label{sec:eval-summary}
 
 On VID at the common budget, layered PSM is the cheapest compared method
-($46.6$ GFLOPs per frame, $73\%$ below dense and $23\%$ below Eventful)
-for an accuracy cost of at most $2.4$ mAP@50; no compared configuration
-is both cheaper and more accurate, though a budget-matched Eventful point
-recovers roughly $1.5$ mAP, so the two mechanisms are complementary
-rather than substitutes. Accuracy is governed almost entirely by the
-reuse fraction $\gamma$, degrading super-linearly under the dense
-detection readout, while the merge-pass count $T$ is FLOP-neutral and
-nearly irrelevant. The cache is bounded by scene complexity, but stacking
-it on the host's buffers makes it the highest-memory row, and the FLOP
-saving is only partly realised in wall-clock terms.
-
-Action recognition inverts this picture. Under a global class-token
-readout accuracy is a step function of $\gamma$, so the memory can absorb
+($46.6$ GFLOPs per frame, $73\%$ below dense) for an accuracy cost of at
+most $2.4$ mAP@50; no compared configuration is both cheaper and more
+accurate, though a budget-matched Eventful point recovers roughly $1.5$
+mAP, so the two mechanisms are complementary rather than substitutes.
+Raising the input to $1024 \times 1024$ at the same absolute budget
+sharpens both sides of that trade: the compute margin widens to $85\%$
+below dense, but accuracy falls to $75.57$ mAP@50 and PSM no longer
+dominates the spatially pooled Eventful variant, which is $1.4$ points
+better at the same compute. The $672$ operating point does not transfer
+unchanged to a $12.5\%$ token budget.
+Accuracy is governed almost entirely by the reuse fraction $\gamma$,
+degrading super-linearly under the dense detection readout, while the
+merge-pass count $T$ is FLOP-neutral and nearly irrelevant. Action
+recognition inverts this picture: under a global class-token readout
+accuracy is a step function of $\gamma$, so the memory can absorb
 $\gamma = 0.95$ of the recompute proposal, cutting whole-clip cost by
-$39\%$ and matching cost by $16\times$ for $2.6$ Top-1 points under fully
-counted single-pass accounting. Persistent reuse is thus most tailored to
-global-readout tasks, and the streaming implication is the extension we
-consider most promising: on long streams the amortised cost tends to the
-matching term alone, roughly $1\%$ of dense, and since matching already
-computes token-to-prototype similarity, an additive cache update (folding
-matched tokens into their prototypes, appending unexplained ones) would
-keep the frozen memory current at negligible cost. If that sustains
-accuracy over long horizons, it implies order-of-magnitude reductions on
-streaming footage for a few points of accuracy; we leave this to future
-work.
+$39\%$ and matching cost by $16\times$ for $2.6$ Top-1 points under
+fully counted single-pass accounting. Persistent reuse is thus most
+tailored to global-readout tasks. The most promising extension is
+streaming: on long footage the amortised cost tends to the matching term
+alone, roughly $1\%$ of dense, and since matching already computes
+token-to-prototype similarity, an additive cache update (folding matched
+tokens into their prototypes, appending unexplained ones) would keep the
+frozen memory current at negligible cost; we leave this to future work.
 
 The scope of these claims: detection is compared at a single common
-budget under a replay protocol that models recurring-content deployments;
-action recognition uses single-pass accounting at three host budgets; and
-operating points were selected on $10\%$ subsamples of the reported
-splits, as is standard for these benchmarks.
-\textbf{[TBD: ViTDet-B $1024 \times 1024$ results; $k = 96$ PSM row
-in Table~\ref{tab:k400}; Eventful latency and memory at $k = 512$ to
-complete Table~\ref{tab:vid672}; $W$ and $P$ (refresh-period) sweeps
-under replay matching.]}
+budget, carried unchanged across two input resolutions, under a replay
+protocol that models recurring-content deployments; action recognition
+uses single-pass accounting at three host budgets; and operating points
+were selected on $10\%$ subsamples of the reported splits at
+$672 \times 672$, as is standard for these benchmarks.
 
 \bibliography{references}
 

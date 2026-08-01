@@ -1,0 +1,31 @@
+# Pip equivalent of environment.yml. Python 3.10.19.
+#
+#   pip install -r requirements.txt
+#
+# These are the exact versions the reported numbers were produced with.
+# PyTorch must be the CUDA 11.8 build; install it from the PyTorch cu118 index
+# before running this file if pip resolves a CPU-only wheel by default.
+
+torch==2.0.1
+torchvision==0.15.2
+torchmetrics==0.11.4      # load-bearing: mAP@50 changes across 0.11 -> 1.x
+numpy==1.23.5
+scipy==1.10.1
+pandas==1.5.3
+matplotlib==3.7.2
+Pillow==9.5.0
+omegaconf==2.3.0
+einops==0.8.2
+av==10.0.0
+opencv-python==4.7.0.72
+requests==2.28.2
+tensorboard==2.11.2
+tqdm==4.65.0
+PyYAML==6.0.3
+
+# Detectron2 0.6, required by every detection result. Not distributed on PyPI,
+# so it must be built from source; needs gcc >= 5.4 and cuda-nvcc. The pinned
+# commit is the 0.6 release.
+git+https://github.com/facebookresearch/detectron2.git@88217cad6d741ea1510d13e54089739f5a0f4d7d
+
+# System package, not pip-installable: ffmpeg 4.2 (Kinetics-400 decoding).

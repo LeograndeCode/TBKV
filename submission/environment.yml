@@ -1,0 +1,48 @@
+# Conda environment for reproducing the paper's tables and figures.
+#
+#   conda env create -f environment.yml
+#   conda activate eventful-transformer
+#
+# Versions marked "verified" are the exact ones the reported numbers were
+# produced with; see README.md section 3.
+name: eventful-transformer
+channels:
+  - defaults
+dependencies:
+  - ffmpeg=4.2
+  - matplotlib=3.7          # verified 3.7.2
+  - numpy=1.23              # verified 1.23.5
+  - nvidia::cuda=11.8
+  - nvidia::cuda-nvcc=11.8  # for building Detectron2
+  - pandas=1.5
+  - pip=23.0
+  - python=3.10             # verified 3.10.19
+  - pytorch::pytorch-cuda=11.8
+  - pytorch::pytorch=2.0    # verified 2.0.1
+  - pytorch::torchvision=0.15   # verified 0.15.2
+  - requests=2.28
+  - scipy=1.10              # verified 1.10.1
+  - tensorboard=2.11
+  - torchmetrics=0.11       # verified 0.11.4  -- see PIN note below
+  - tqdm=4.65.*             # verified 4.65.0
+  - pip:
+      - einops==0.8.*       # verified 0.8.2
+      - av==10.0.*
+      - omegaconf==2.3.*    # verified 2.3.0
+      - opencv-python==4.7.*  # required by the Detectron2 visualizer
+
+      # Builds Detectron2 0.6 from source (requires gcc >= 5.4 and cuda-nvcc).
+      # Detectron2 is not distributed on PyPI, so a source build is the only
+      # installation route; the pinned commit is the 0.6 release.
+      - git+https://github.com/facebookresearch/detectron2.git@88217cad6d741ea1510d13e54089739f5a0f4d7d
+
+# PIN note -- torchmetrics 0.11:
+#   mAP@50 on ImageNet VID is computed by torchmetrics' MeanAveragePrecision.
+#   Its internals changed across 0.11 -> 1.x, and the reported detection
+#   numbers were produced with 0.11.4. Do not float this pin if you intend to
+#   compare against the values in the paper.
+#
+# Hardware note:
+#   The CUDA 11.8 pin matches the driver used for the reported latency and
+#   peak-memory measurements (one NVIDIA Quadro RTX 6000, 24 GB). Accuracy and
+#   GFLOPs are hardware-independent; latency and memory are not.

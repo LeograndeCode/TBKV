@@ -237,9 +237,11 @@ python scripts/plots/make_vitdet672_figures.py     # or: bash scripts/run/06_fig
 ```
 
 Writes `fig_vid672_frontier.pdf` (Figure 1) and `fig_vid672_ablation.pdf`
-(Figure 2) to `paper/Figures/`. This needs **no GPU, no weights and no
-dataset** — it takes seconds and is the fastest way to confirm the archive
-runs.
+(Figure 2), plus a `.png` of each, to `paper/Figures/`. That directory is not
+shipped: the script creates it on first run, relative to its own location, so
+this works from a fresh unzip and from any working directory. This needs **no
+GPU, no weights and no dataset** — it takes seconds and is the fastest way to
+confirm the archive runs.
 
 > **Disclosure — the plotting script holds its values as constants.**
 > `make_vitdet672_figures.py` carries the plotted numbers inline (`METHODS` and

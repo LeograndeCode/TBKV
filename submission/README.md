@@ -4,7 +4,9 @@
 This archive contains the complete implementation of Persistent Semantic
 Memory (PSM), the host integration it is layered on, the configuration files
 pinning every hyperparameter used in the paper, and the scripts that compute
-every reported metric. It is self-contained: no component is hosted elsewhere.
+every reported metric. The implementation is complete: no part of the method is
+hosted elsewhere. The datasets and the pretrained checkpoints are not
+redistributed here; both are public and section 2 gives their sources.
 
 The method is called `psm` throughout: `src/psm/` is the implementation,
 `psm_eventful_filter_*` and `eventful_psm_*` are the configs, and
@@ -86,12 +88,55 @@ so all methods see identical pixels at a given resolution.
 32-frame views divided into sixteen 2-frame tubelet steps, with 12 views per
 clip at 224 x 224, giving 197 tokens per step (196 spatial + 1 class token).
 
+### Weights
+
 Model weights are frozen pretrained checkpoints for every method, PSM included;
-nothing in this archive trains. The five checkpoints are the public releases of
-the corresponding models: the ViTDet detector fine-tuned on ImageNet VID, the
-ViViT-B factorized-encoder Kinetics-400 model, and the host's three per-budget
-fine-tuned temporal sub-models (one per `k` in {24, 48, 96}). They are included
-under `weights/` with the file names the configs reference (section 6).
+**nothing in this archive trains**. **No checkpoint is redistributed here**, and
+`weights/` ships empty. Every checkpoint is a public release of either the host
+method — Eventful Transformers (Dutson et al., ICCV 2023), cited in the paper —
+or of the original backbone, and each is obtained from that public release. The
+five files below are all that `weights/` needs.
+
+Two of them are published under different parameter names and must be remapped
+before use. The remap scripts and their name-mapping configs are part of the
+host method's official code release, at the paths given in the commands below;
+obtain that release and run the commands from its root.
+
+**Detection — `weights/vitdet_b_vid.pth`.** Obtain `frcnn_vitdet_final.pth`,
+the ViTDet-B detector fine-tuned on ImageNet VID, from the host method's
+official release (Eventful Transformers, ICCV 2023), then remap it:
+
+```bash
+./scripts/convert/vitdet.py <obtained> weights/vitdet_b_vid.pth ./configs/convert/vitdet_b.txt
+```
+
+**Recognition, dense — `weights/vivit_b_kinetics400.pth`.** Obtain the
+"ViViT Fact. Enc." Kinetics-400 weights from the TAdaConv model zoo
+(Huang et al., TAdaConv), then remap them:
+
+```bash
+./scripts/convert/vivit.py <obtained> weights/vivit_b_kinetics400.pth ./configs/convert/vivit_b.txt
+```
+
+**Recognition, per-budget — `weights/vivit_b_kinetics400_final_{24,48,96}.pth`.**
+The host method's fine-tuned temporal sub-models, one per token budget `k`.
+Obtain them from the host method's official release; they need no remap.
+
+**These three can equivalently be regenerated from scratch**, which is the
+strongest reproducibility path and requires no distributed artifact at all: the
+host method's public code release contains the exact training configurations
+used to produce them, `configs/train/vivit_kinetics400/final_{24,48,96}.yml`.
+Running those configs reproduces the three checkpoints directly.
+
+> The dense checkpoint and the `k = 24` one are the **same model**: we verified
+> that `vivit_b_kinetics400.pth` and `vivit_b_kinetics400_final_24.pth` hold
+> bit-identical tensors (all 204, max difference 0), differing only in
+> serialization. Fine-tuning at `k = 24` left the base weights unchanged; the
+> `k = 48` and `k = 96` checkpoints do differ, in the temporal sub-model and
+> classifier only (54 of 204 tensors). Either filename works for the dense row.
+
+`bash scripts/run/00_check_setup.sh` verifies that all five files are present
+and correctly named before any evaluation starts.
 
 ---
 
@@ -352,7 +397,8 @@ behind `measure_latency=true`, which is why that override appears in the PSM
 rows above and must not be dropped. Table 2, Table 3 and the figures report
 no latency.
 
-Weight files shipped under `weights/`, as referenced by the configs:
+Weight files, as referenced by the configs. Place them under `weights/`;
+section 2 gives the download and conversion steps for each:
 
 | File | Used by |
 |---|---|
@@ -389,7 +435,7 @@ under an identical warm-up protocol.
 ├── data/
 │   ├── vid/                   place data.tar here (shipped empty)
 │   └── kinetics400/           filled automatically on first use (shipped empty)
-├── weights/                   the five pretrained checkpoints (section 6)
+├── weights/                   place the five checkpoints here (shipped empty)
 ├── src/
 │   ├── psm/                   the method
 │   │   ├── blocks.py          Algorithm 1 (recompute-set filter)

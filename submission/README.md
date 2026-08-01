@@ -408,6 +408,15 @@ behind `measure_latency=true`, which is why that override appears in the PSM
 rows above and must not be dropped. Table 2, Table 3 and the figures report
 no latency.
 
+> **Reading a saved `config.yml`.** Each result directory stores the merged
+> configuration, written when the run starts. Command-line overrides appear at
+> **top level** — those are the authoritative values for the run. The nested
+> `model.backbone_config.block_config` section still shows the config *file's*
+> defaults (e.g. `cache_reuse: 0.5`, `merge_iterations: 4`), because the
+> overrides are routed into the blocks after the file is written. For the PSM
+> rows, read the top-level `cache_reuse` / `merge_iterations`; the directory
+> name records the same values, and `verify_paper_results.py` checks them.
+
 Weight files, as referenced by the configs. Place them under `weights/`;
 section 2 gives the download and conversion steps for each:
 

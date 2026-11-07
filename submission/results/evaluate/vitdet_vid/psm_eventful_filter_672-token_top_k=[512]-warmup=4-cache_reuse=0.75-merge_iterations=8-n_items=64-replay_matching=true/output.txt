@@ -1,0 +1,26 @@
+Token top k=512
+Quadro RTX 6000
+Metrics
+    map:               0.3712
+    map_50:            0.6363
+    map_75:            0.3679
+    map_large:         0.3978
+    map_medium:        0.199
+    map_per_class:     -1
+    map_small:         0.07119
+    mar_1:             0.3925
+    mar_10:            0.4805
+    mar_100:           0.4819
+    mar_100_per_class: -1
+    mar_large:         0.5155
+    mar_medium:        0.2801
+    mar_small:         0.1211
+Counts
+    accumulator_flops: 1.123e+07
+    add_flops:         3.99e+08
+    bias_flops:        1.062e+07
+    einsum_flops:      7.587e+08
+    gate_flops:        2.036e+08
+    linear_flops:      1.087e+10
+    matmul_flops:      7.023e+09
+

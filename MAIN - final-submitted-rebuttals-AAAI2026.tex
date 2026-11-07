@@ -1,0 +1,328 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern,microtype}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{amsmath,amssymb}
+\usepackage[hidelinks]{hyperref}
+\setlength{\emergencystretch}{3em}
+% Internal archive: this file contains a confidential chairs-only comment.
+% Set false to omit that comment from the compiled document.
+\newif\ifincludeconfidential
+\includeconfidentialtrue
+\title{Persistent Semantic Memory for Efficient Video Transformer Inference\\[0.5em]\large Reviews and Author Responses --- Submission 38867}
+\author{Authors' internal compilation}
+\date{29 October 2026}
+\begin{document}
+\maketitle
+\noindent\textbf{Internal compilation.} Reviewer reports and posted responses are reproduced from the supplied export. The confidential comment appears separately at the end. Mathematical expressions missing from the export are marked; three expressions in author responses are restored from the preceding drafts. OpenReview navigation and account metadata are omitted. No response to Hf5c was present in the export.
+\tableofcontents
+
+
+\clearpage
+
+\section{Reviewer Va3u}
+
+\subsection*{Review: Interesting concept, but incomplete method descruiption and unconvincing results}
+
+\subsubsection*{Paper Summary}
+This paper addresses the limitation of video transformer accelerators that rely only on short-term, location-based temporal caching. It argues that recurring visual content is needlessly recomputed after camera motion or long temporal gaps, and introduces Persistent Semantic Memory (PSM), a training-free semantic caching framework. PSM builds a memory bank of semantic prototypes on the fly using bipartite soft-matching, and reuses cached KV activations when similar content reappears. Evaluated on top of Eventful Transformers for video object detection (ImageNet VID) and action recognition (Kinetics-400), the paper reports that global classification readouts handle semantic substitution much better than dense spatial prediction heads.
+
+\subsubsection*{Strengths}
+Shifting video transformer caching from short-term, position-bound frame diffs to content-addressable semantic reuse is a fresh and well-motivated concept.
+Designed as a training-free layer that plugs directly into existing accelerators without modifying base model parameters or architecture.
+Strong empirical evaluation with meaningful ablations.
+\subsubsection*{Weaknesses}
+Incomplete method description: The method section text and its Algorithm 1 lack crucial details needed for reproducibility. The text omits exact mathematical formulations for updating prototypes with new observations, setting the similarity threshold, and initializing the memory bank.
+
+Numerical contradictions: The abstract claims a 39\% computation reduction for a 2.5 point drop, the introduction claims 49\% for 2.5 points, and the experimental text reports 39\% for a 2.6 drop.
+
+Unconvincing performance and hardware trade-offs: The proposed method yields the worst accuracy among all compared approaches, with Fig 1 clearly positioning it as a weaker option in the accuracy-compute trade-off. While reducing FLOPs, the method ignores real-world computational bottlenecks, which are memory and latency. It incurs worse latency and a huge memory footprint, making it a poor choice for practical deployment.
+
+Presentation errors and missing results: Fig 1 caption incorrectly states "Lower right is better" when it should read "Upper left is better". Additionally, the text dedicates a section to prototype granularity ablations without providing any plot or table.
+
+\subsubsection*{Justification of Recommendation}
+The paper introduces an interesting framing by extending video transformer caching to content-addressable semantic memory. However, the manuscript suffers from significant reproducibility gaps in the method formulation, self-contradictory reporting across sections, and poor real-world execution trade-offs. The substantial memory increase alongside poor wall-clock latency gains undermines the practical utility of the method. Coupled with minor presentation flaws, the current submission falls below publication standards.
+
+\subsubsection*{Specific Points of Feedback for Rebuttal}
+Please provide explicit update equations for prototype update, state the exact values/tuning procedures used for the threshold, and clarify the memory initialization protocol.
+Please align the computation reduction and accuracy drop numbers across thepaper.
+Please discuss why this method is practical for real-world deployment when it introduces worse latency, larger memory overhead, lower accuracy, and an unfavorable accuracy-compute trade-off compared to other methods.
+Please fix Fig 1 caption, provide the missing ablation plot or table for prototype granularity, and clean up informal inline subsubsubsection formatting (e.g., "Hypothesis", "Main implication") in Evaluation.
+\noindent\textbf{Rating: 4: Ok but not good enough - rejection}\par
+\noindent\textbf{Confidence: 3: The reviewer is fairly confident that the evaluation is correct}\par
+
+\subsection{Author response}
+
+\textbf{Title:} Clarifying memory overhead, measured trade-offs, and method description
+
+Thank you for highlighting these concerns. We clarified the reported results and distinguish presentation fixes from limitations of the evaluation.
+
+Table 1 reports total peak memory, including Eventful's buffers. Adding PSM increases it by 5 MB at 672 resolution (2324 to 2329 MB) and 17 MB at 1024 (8045 to 8062 MB). We will make this distinction explicit alongside the table.
+
+Table 1 reports 79.87 mAP at 46.6 GFLOPs for PSM, versus 79.48 at 52.8 GFLOPs for Eventful with spatial pooling. PSM therefore improves accuracy and computation at these measured points. However, the results do not establish superiority across full Pareto frontiers or consistent latency gains over Eventful. These limitations require further experiments and implementation work; we will narrow the deployment claims accordingly. Reported FLOPs include PSM's matching overhead.
+
+For reproducibility, Algorithm 1 specifies bootstrap collection, $T$ bipartite merging passes, and fixed-fraction selection. We will align the method text with the evaluated implementation and explicitly document initialization, merging, stored tensors, and the selection rule.
+
+We will also correct the reporting inconsistencies: Table 3 supports 38.7\% whole-clip FLOP reduction with a 2.56-point Top-1 loss. The camera-ready revision will use these values consistently, correct Figure 1's direction and marker description, tabulate the granularity results currently summarized in prose, and simplify the evaluation formatting.
+
+\clearpage
+
+\section{Reviewer RCK8}
+
+\subsection*{Review: Content-addressable reuse is promising, but its advantages over simpler compute reduction remain insufficiently established.}
+
+\subsubsection*{Paper Summary}
+This paper proposes Persistent Semantic Memory (PSM), a training-free framework for reducing video transformer computation through content-addressable reuse. PSM constructs a compact prototype memory from an initial segment and uses feature similarity to identify tokens that may reuse previously computed representations. The framework is evaluated primarily as an additional filter on top of Eventful Transformers, using ImageNet VID detection and Kinetics-400 action recognition. The results demonstrate additional FLOP reductions at selected operating points, accompanied by task- and budget-dependent accuracy degradation.
+
+\subsubsection*{Strengths}
+The motivation is intuitive and relevant: recurring visual content may provide opportunities for computation reuse beyond short-term, position-aligned temporal redundancy.
+The framework can be applied without additional training and offers a potentially useful interface for augmenting an existing temporal accelerator.
+The paper reports latency and peak memory alongside FLOPs and explicitly discusses several limitations, including replay-based detection evaluation, limited latency improvements, and substantial accuracy degradation at larger recognition budgets.
+\subsubsection*{Weaknesses}
+The central claim of long-term semantic reuse is insufficiently validated. Detection uses a warm-up-and-replay protocol, while recognition uses short clips; neither directly demonstrates robust reuse across long temporal gaps or scene revisits.
+Comparisons with lower-budget Eventful at matched FLOPs or latency are missing, leaving it unclear whether semantic memory outperforms simply recomputing fewer tokens.
+The method description is inconsistent regarding threshold-based versus fixed-fraction matching, online versus frozen memory, and prototype/KV reuse versus the host's existing reuse path.
+FLOP reductions yield little measured latency improvement, while accuracy losses reach 9.17 and 17.28 Top-1 points at larger recognition budgets.
+The readout-based explanation lacks controlled evidence, since detection and recognition also differ in architecture, task, and evaluation protocol.
+\subsubsection*{Justification of Recommendation}
+I lean toward weak rejection. Content-addressable reuse is a worthwhile direction, and the reported FLOP reductions suggest potential. However, the current evidence does not sufficiently establish that persistent semantic retrieval provides a better accuracy--efficiency trade-off than simpler budget reduction. The ambiguity in the implemented reuse mechanism, absence of direct long-term recurrence evaluation, and limited measured latency improvements further weaken the central claims.
+
+\subsubsection*{Specific Points of Feedback for Rebuttal}
+See weaknesses.
+
+\noindent\textbf{Rating: 4: Ok but not good enough - rejection}\par
+\noindent\textbf{Confidence: 3: The reviewer is fairly confident that the evaluation is correct}\par
+
+\subsection{Author response}
+
+\textbf{Title:} Semantic attribution, evaluation scope, and supported conclusions
+
+Thank you for highlighting the distinction between semantic reuse and additional token skipping.
+
+Table 3 evaluates recognition in one pass, including bootstrap and matching costs. At $k=24$, PSM reduces whole-clip computation from 1053 to 645 GFLOPs, while Top-1 changes from 62.38 to 59.82. Detection builds its cache before scoring and excludes initialization cost. We will clarify this distinction. Long-gap recurrence and drift robustness remain untested extensions. Our measured contribution is additional compute reduction over temporal reuse under these protocols; we will separate this result from broader streaming claims.
+
+Holding the host budget fixed tests whether PSM can remove computation beyond Eventful's temporal selection; measured FLOPs include matching overhead. This supports composability, while matched-FLOP Eventful and random-selection controls are needed to establish a superior selection policy. We will make this distinction explicit.
+
+We will reconcile the threshold/update description with Algorithm 1 and the implementation, specifying cache construction, when memory freezes, threshold versus fixed-fraction selection, and the tensors reused.
+
+The 9.17- and 17.28-point losses at larger recognition budgets limit the favorable result to the low-budget setting. Lower FLOPs do not establish a latency advantage over Eventful. Architecture and protocol also differ between tasks, so readout sensitivity is a plausible explanation, not a demonstrated cause.
+
+\clearpage
+
+\section{Reviewer 4vxo}
+
+\subsection*{Review: A novel solution to content-addressable reuse for video transformer inference, but without convincing online-streaming validation, robust cache-update analysis, or full accuracy-compute frontier comparisons.}
+
+\subsubsection*{Paper Summary}
+The paper proposes Persistent Semantic Memory (PSM), a training-free inference mechanism for video transformers. Instead of reusing computation only from nearby frames or identical token positions, PSM stores semantic prototypes and their associated transformer activations, then retrieves them by content similarity when similar visual content reappears.
+
+The method is designed as a layer on top of existing temporal accelerators. In the paper's implementation, PSM is combined with Eventful Transformers: the host method proposes a recomputation set, and PSM filters part of that set using a persistent prototype cache. Matched tokens reuse cached representations or key/value projections, while unmatched tokens follow the host computation path.
+
+The evaluation covers ImageNet VID object detection and Kinetics-400 action recognition. The main conclusion is that semantic memory can reduce additional computation beyond temporal reuse, but its usefulness depends strongly on the task readout: global classification tolerates aggressive reuse better than dense detection.
+
+\subsubsection*{Strengths}
+Clear conceptual novelty. The paper's core idea is distinct: content-addressable semantic caching for transformer inference, rather than identity-based, position-based, or short-window temporal reuse. This is a meaningful new angle for efficient video inference.
+
+Good positioning against prior acceleration methods. The related work separates spatial token reduction, temporal computation reuse, and memory- augmented transformers. PSM is well positioned as memory for computation reuse, not memory for prediction context.
+
+Training-free and composable design. PSM does not require retraining or architectural modification, and Algorithm 1 shows how it can be layered on top of a host accelerator. This makes the idea practically attractive.
+
+Honest analysis of task-dependent behavior. The paper does not claim universal success. It explicitly shows that dense detection is more sensitive to approximation, while global action recognition tolerates more aggressive reuse.
+
+Useful cost reporting. Table 1 reports GFLOPs, latency, memory, and accuracy. This is stronger than reporting FLOPs alone, especially because cache lookup and gather/scatter overhead can reduce real speedup.
+
+\subsubsection*{Weaknesses}
+The strongest deployment claim depends on an artificial replay protocol. For ImageNet VID, the memory is built from the first pass and only the second replay pass is scored and costed. This models archived or repeated footage, not a normal single-pass online video stream. Since the paper motivates persistent memory for real-world video streams, it should either weaken that claim or include a true online evaluation where cache construction, lookup, update, and drift are all counted.
+
+Long-horizon memory behavior is not validated. The paper argues that PSM helps with long temporal gaps, but the experiments do not directly measure recurrence gap length, memory staleness, scene changes, false matches, or cache pollution. A key missing analysis is accuracy and hit-rate as a function of temporal gap and semantic drift.
+
+Cache construction and update rules are under-specified. Type: Fixable issue. The text describes prototype matching and updating with cosine similarity, but important details are unclear: cache capacity, replacement policy, threshold selection, prototype averaging rule, per-layer cache handling, and what happens under distribution shift. These details are central to reproducibility.
+
+Accuracy-compute comparisons do not fully trace competing frontiers. Table 1 mostly compares fixed-budget configurations. The paper itself notes that a budget-matched Eventful point could recover roughly 1.5 mAP. For a systems/efficiency paper, the key comparison should be full Pareto frontiers, not only selected operating points.
+
+Wall-clock speedups are less convincing than FLOP reductions. At 672 resolution, PSM reduces FLOPs versus Eventful but has slightly worse latency, 60.0 ms vs. 58.9 ms. At 1024, latency is near parity. This does not invalidate the idea, but the paper should be more careful: current implementation demonstrates compute reduction more clearly than real latency speedup.
+
+Recent semantic/KV-cache literature is not fully discussed. The positioning would be stronger with discussion of recent content- or prototype-based cache work in video/VLM inference, such as ProtoKV, VLMCache, StateKV, and spatio-temporal token merging. These do not remove the novelty, but they help clarify what is specific to PSM's setting. Sources checked: VLMCache, ProtoKV, StateKV, STTM.
+
+\subsubsection*{Justification of Recommendation}
+I rate this paper positively because the main idea is novel and well motivated: semantic, content- addressable reuse is a natural but underexplored primitive for video transformer inference. The paper also gives useful evidence that the idea can complement temporal accelerators. The rating is not higher because the strongest claims about persistent streaming memory are not fully validated, the replay protocol limits realism, and the comparison should include stronger Pareto-frontier and cache-drift analyses.
+
+\subsubsection*{Specific Points of Feedback for Rebuttal}
+Can the authors report true single-pass online detection results where memory construction and matching are both counted?
+
+What are the cache capacity, replacement policy, threshold values, and prototype update equations?
+
+How does PSM performance vary with recurrence gap length?
+
+What is the false-match rate, and how often do semantic matches harm predictions?
+
+Can the authors provide full accuracy-compute Pareto curves for Eventful, Eventful+pooling, MaskVD, STGT, and PSM?
+
+Why does the FLOP reduction not translate into latency improvement over Eventful at 672 resolution?
+
+How stable are the selected gamma and T values across videos, datasets, and random subsamples?
+
+What happens when the scene changes permanently and the persistent cache becomes stale?
+
+\noindent\textbf{Rating: 6: Marginally above acceptance threshold}\par
+\noindent\textbf{Confidence: 5: The reviewer is absolutely certain that the evaluation is correct and very familiar with the relevant literature}\par
+
+\subsection{Author response}
+
+\textbf{Title:} Clarifying cache behavior, streaming evaluation, and efficiency trade-offs
+
+Thank you for recognizing the value of content-addressable reuse and for identifying the evidence needed to extend it to streaming.
+
+The detection protocol explicitly measures warm replay; Table 3 provides complementary single-pass recognition results with cache construction and matching fully counted. Together they establish additional compute reduction under the stated protocols. Recurrence-gap effects, false matches, and adaptation after scene changes remain unmeasured; we will distinguish these streaming questions from the demonstrated results.
+
+Algorithm 1 builds prototypes by merging tokens collected during bootstrap. Recognition freezes the cache after four temporal steps; detection initializes it from four frames before replay. Thus, bounded storage applies to this frozen cache. We will improve the online-update prose with this procedure and specify per-layer capacity, merge equations, selection rules, and stored tensors.
+
+FLOPs fall from 60.7 to 46.6, while latency changes from 58.9 to 60.0 ms. We will retain this limitation; attributing it to matching and data movement requires profiling.
+
+The fixed-budget comparisons test composition with Eventful; we agree that complete Pareto curves remain necessary to assess frontier superiority. The shared subsample sweeps characterize sensitivity to $\gamma$ and $T$, but do not establish stability across random subsamples or drift. We will clarify this scope and expand the discussion of the suggested semantic/KV-cache work.
+
+\clearpage
+
+\section{Reviewer Hf5c}
+
+\subsection*{Review: Official Review of Submission38867}
+
+\subsubsection*{Paper Summary}
+This paper addresses redundant computation in video transformers when recurring content reappears after temporal gaps or camera motion. It proposes Persistent Semantic Memory (PSM), a training-free, content-addressable cache that stores compact semantic prototypes and their transformer key/value activations. During an initial bootstrap phase, token representations are grouped online using cosine similarity; later tokens retrieve the nearest prototype and reuse its cached activations when the similarity exceeds a threshold, while unmatched tokens are recomputed. PSM can be layered onto temporal accelerators such as Eventful Transformers. Experiments on ImageNet VID and Kinetics-400 show substantial computation savings, including a 39\% whole-clip reduction and 16\(\times\) lower matching cost in one recognition setting, with task-dependent accuracy loss. The results suggest that semantic recurrence complements temporal reuse, although dense detection is less tolerant than global classification.
+
+\subsubsection*{Strengths}
+Clear problem formulation and implementation. The paper clearly describes a semantic-cache mechanism and its integration with existing temporal accelerators.
+
+Broad empirical coverage. The evaluation spans detection and classification and reports both efficiency and accuracy, with useful ablations on reuse fraction and prototype granularity.
+
+\subsubsection*{Weaknesses}
+Novelty is insufficiently established. The Related Work section does not deeply compare PSM with prior feature-reuse and memory methods such as Deep Feature Flow (Zhu et al., CVPR 2017), MeMViT (Wu et al., CVPR 2022), and Token Turing Machines (Ryoo et al., CVPR 2023). Direct comparisons would clarify the technical contribution.
+
+The evaluation is not fully representative of online streaming. The detection experiment uses a two-pass replay protocol, while the recognition memory is frozen after the bootstrap window. Long-term drift, continuous cache updates, and single-pass streaming are not tested.
+
+Implementation details are incomplete. The paper does not clearly specify cache capacity, eviction/update policies, threshold selection, or layer-wise storage, despite claiming bounded memory in the PSM Cache and Complexity Analysis sections.
+
+Efficiency--accuracy trade-offs remain brittle. Although FLOPs decrease, latency is nearly unchanged in Table 1, and accuracy drops substantially for high-resolution detection and larger reuse fractions. Full Pareto curves, sensitivity analyses, and optimized matching kernels would better support the deployment claims.
+
+\subsubsection*{Justification of Recommendation}
+I lean toward a weak reject. The paper presents a clear and practical method with broad empirical evaluation, but its novelty is not sufficiently distinguished from prior memory and feature-reuse work. The replay-based evaluation, incomplete implementation details, and brittle accuracy--latency trade-offs also limit confidence in its practical impact.
+
+\subsubsection*{Specific Points of Feedback for Rebuttal}
+My main concerns are illustrated in the weaknesses part.
+
+\noindent\textbf{Rating: 5: Marginally below acceptance threshold}\par
+\noindent\textbf{Confidence: 4: The reviewer is confident but not absolutely certain that the evaluation is correct}\par
+
+\subsection{Author response}
+
+\emph{No posted response was included in the supplied export.}
+
+\clearpage
+
+\section{AI reviewer}
+
+\subsection*{Review: AI Review}
+
+\subsubsection*{Synopsis of the paper}
+The paper proposes Persistent Semantic Memory, a training-free cache that represents previously observed video content with prototypes and reuses associated transformer activations when similar content reappears. It is layered over a temporal accelerator to further reduce token recomputation. Experiments on object detection and action recognition investigate how reuse interacts with dense and global prediction heads.
+
+\subsubsection*{Summary of Review}
+The paper formulates content-addressable activation reuse as a distinct source of video-transformer efficiency and provides a modular implementation with broad cost accounting. The principal concern is attribution: the evaluated algorithm always removes a fixed token quota, and the ablation counts the host's pre-existing savings toward PSM's gains, so the evidence does not establish that semantic memory rather than additional skipping produces the result. The protocols also do not test long-gap recurrence, while the complexity analysis does not clearly model the implemented execution path. Related work narrows the novelty to a particular training-free activation-reuse policy. Finally, the FLOP reductions do not produce a host-relative latency improvement, and the favorable recognition point remains far below dense-model accuracy.
+
+\subsubsection*{Strengths}
+
+The problem formulation identifies redundancy that local, position-aligned temporal reuse may miss. The Introduction and Related Work distinguish content-addressed recurrence from intra-frame reduction and recent-frame gating, focusing the paper on a concrete systems question relevant to moving-camera and recurring-scene video.
+
+The layered interface is modular at the algorithmic level. Algorithm 1 operates on a host accelerator's recomputation set and reduces to the host at [mathematical expression omitted in source export]  allowing persistent reuse to complement rather than replace an existing temporal policy.
+
+The cost accounting covers deployment-relevant dimensions. Table 1 reports GFLOPs, measured latency, and peak memory, while Table 3 separates cold whole-clip cost from warm matching cost; this makes the gap between operation counts and realized execution cost visible.
+
+The evaluation reports sharp failure regimes rather than only favorable settings. Figure 2 shows detection losses growing from 2.8 to 44.0 mAP points as [mathematical expression omitted in source export] increases, while Table 3 shows that classification losses grow markedly at larger host budgets, helping delimit where the mechanism is applicable.
+
+\subsubsection*{Weaknesses}
+
+The reported savings cannot be attributed to semantic memory. Equation 2 permits reuse only above [mathematical expression omitted in source export]  but Algorithm 1, line 7 always removes the top [mathematical expression omitted in source export] candidates, with no random-removal or matched lower-
+ Eventful control. Moreover, Table 1 shows Eventful already provides 65.2 percentage points of the 73.3 percent dense-relative saving at 
+; Figure 2's ``almost three quarters'' interpretation therefore counts host savings as PSM gains.
+
+The central long-term recurrence claim is not tested. Detection initializes memory from four uncounted frames and then replays the video, while recognition caches four of only sixteen temporal steps and matches the remaining twelve. Without measurements against recurrence gap, spatial displacement, cache age, or drift, these protocols demonstrate bootstrap-conditioned reuse rather than persistent reuse after long temporal gaps.
+
+The complexity analysis does not establish the stated cost for the implemented path. Equation 3 combines projection and MLP counts consistent with one operation per multiply-accumulate with a doubled attention term, while Equation 4 uses quadratic [mathematical expression omitted in source export] attention although Algorithm 1 either recomputes all candidates after substitution or sends skipped tokens through the host reuse path. Thus, the quadratic-saving rationale and break-even condition [mathematical expression omitted in source export] are not derived for the stated execution.
+
+The novelty is narrower than the claimed ``new primitive.'' MC-ViT constructs compact memories from past video activations (Balazevic et al., 2024), VidToMe performs cross-frame and cross-chunk token merging (Li et al., 2024), and LITE establishes random discarding as a strong video token-reduction baseline (Hao et al., 2025). These works do not duplicate PSM's K/V substitution, but they position the contribution as a specific activation-reuse policy and reinforce the need for random-selection controls.
+
+The operation-count gains do not translate into a host-relative deployment speedup. In Table 1 at [mathematical expression omitted in source export]  PSM lowers Eventful from 60.7 to 46.6 GFLOPs but increases latency from 58.9 to 60.0 ms. At [mathematical expression omitted in source export]  it is only 1.8 GFLOPs below spatial pooling while being 44.5 ms slower and 1.41 mAP worse, limiting the evidence for practical acceleration.
+
+The favorable recognition result starts from a substantially degraded host operating point. Table 3 reports 59.82 Top-1 for PSM versus 62.38 for Eventful at [mathematical expression omitted in source export]  while dense ViViT reaches 78.64. The emphasized 2.56-point incremental loss therefore accompanies an 18.82-point total loss from the dense reference, which materially changes the practical interpretation of the 39 percent reduction.
+
+\subsubsection*{Suggestions for Improvement}
+
+A match-level failure taxonomy could make the semantic-cache mechanism scientifically informative. Stratifying reuse by similarity margin, foreground/background status, object size, displacement, cache age, and localization versus classification error would reveal which apparent semantic equivalences are safe.
+
+An adaptive reuse policy could unify the divergent operating regimes. Figure 2 and Table 1 show that a fixed [mathematical expression omitted in source export] transfers poorly across readout types and relative token budgets, motivating a policy conditioned on similarity confidence, resolution, readout sensitivity, and available recomputation budget.
+
+The readout-structure hypothesis should be introduced in the Introduction and used to organize the evaluation. A schematic contrasting how substituted tokens affect dense spatial outputs and global class-token aggregation would connect the observed task differences to the proposed mechanism more directly.
+
+\subsubsection*{Additional Details and Minor Issues}
+
+The Introduction's ``up to 49\%'' reduction is not tied to a reported row; Table 3 gives whole-clip reductions of 38.7, 43.4, and 45.8 percent.
+
+Figure 1 calls the open marker an interpolated Eventful point, although its position appears to match the ``Eventful + spatial pool'' row in Table 1.
+
+The query tensor [mathematical expression omitted in source export] is described as produced by the current block although retrieval occurs before that block executes.
+
+Memory Construction adds prototypes online, whereas Algorithm 1 freezes the cache after bootstrap and the complexity section assumes fixed capacity.
+
+Operating points are selected on validation subsamples that remain part of the reported full validation splits.
+
+Table 2's 0.10-point Top-1 spread and the 1.2-point granularity variation are interpreted without intervals despite the stated approximately one-point noise scale.
+
+\subsubsection*{References}
+
+Balazevic, I., Shi, Y., Papalampidi, P., Chaabouni, R., Koppula, S., \& Henaff, O. J. (2024). Memory consolidation enables long-context video understanding. Proceedings of the 41st International Conference on Machine Learning, 235, 2527--2542. (proceedings.mlr.press)
+
+Hao, X., Li, G., Gowda, S. N., Fisher, R. B., Huang, J., Arnab, A., \& Sevilla-Lara, L. (2025). Principles of visual tokens for efficient video understanding. Proceedings of the IEEE/CVF International Conference on Computer Vision, 21254--21264. (openaccess.thecvf.com)
+
+Li, X., Ma, C., Yang, X., \& Yang, M.-H. (2024). VidToMe: Video token merging for zero-shot video editing. Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, 7486--7495. (openaccess.thecvf.com)
+
+\subsection{Author response}
+
+\textbf{Title:} Clarifying semantic reuse, incremental savings, and execution-cost analysis
+
+Thank you for recognizing the opportunity for content-based reuse beyond temporal gating, its modular integration, and the reporting of failure regimes.
+
+Table 1 reports PSM's incremental saving over Eventful: 60.7 to 46.6 GFLOPs, or 23.2\%, including matching. We will correct Figure 2's wording to separate this from host savings. Fixed-budget comparisons show that PSM adds compute savings to Eventful; establishing the advantage of semantic selection requires matched-FLOP and random-selection controls.
+
+Table 3 includes recognition's bootstrap cost. Its favorable point saves 38.7\% with a 2.56-point loss relative to Eventful and an 18.82-point loss relative to dense. We will state both losses and correct the 49\% claim. These results support compute reduction under the evaluated protocols; long-gap robustness and consistent latency gains require further evidence.
+
+We will align Equation 2 and Algorithm 1 with the implementation, specifying selection, retrieval inputs, cache freezing, and reused tensors. We will correct the FLOP convention and derive attention costs from the execution path, removing unsupported quadratic-saving or break-even claims.
+
+We will position PSM against MC-ViT, VidToMe, and LITE as a specific training-free reuse policy, fix Figure 1's marker, and clarify tuning/evaluation overlap. We will avoid significance claims for small ablation differences. Readout sensitivity remains a hypothesis; adaptive reuse and match-level failure analysis are future work.
+
+\ifincludeconfidential
+
+\clearpage
+
+\section{Confidential Comment to the Program Chairs, AC, and SPC}
+
+\textbf{Not for reviewers.}
+
+\par\textbf{Title:} Clarifying the Contribution and Scope of the Submitted Evidence
+
+Dear Program Chairs, AC, and SPC member,
+
+Thank you for coordinating the review. We would like to clarify the scope of our contribution for the discussion.
+
+Our responses rely entirely on the submitted evidence. They distinguish manuscript corrections from broader questions that require further evaluation. In particular, the reported results support additional computation reduction when our solution (PSM) is layered onto a temporal accelerator, while matched-compute superiority, long-gap robustness, and consistent latency gains remain open.
+
+Two existing results help contextualize the deployment concerns: PSM adds 5--17 MB to Eventful's peak memory, and recognition includes cache-construction and matching costs. These details do not resolve all practical concerns, but distinguish the incremental cost of PSM from the host's footprint and the recognition protocol from replay-based detection.
+
+We respectfully ask that the discussion weigh the content-based reuse mechanism, its training-free composition with temporal acceleration, and the documented task-dependent trade-offs alongside the evaluation gaps. We recognize that implementation inconsistencies require explicit clarification and that claims must be limited to the evidence presented.
+
+Kind regards, The authors
+
+\fi
+
+\end{document}
